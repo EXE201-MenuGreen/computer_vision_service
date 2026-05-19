@@ -1,0 +1,62 @@
+# ── Credentials & secrets ──────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+secrets/
+
+# ── Claude Code & internal docs ────────────────────────────
+.claude/
+structure.md
+*.drawio
+*.excalidraw
+
+# ── Python ─────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ── Virtual environments ────────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+
+# ── Model weights (large binary files) ─────────────────────
+weights/*.pt
+weights/*.pth
+weights/*.onnx
+weights/*.bin
+!weights/.gitkeep
+
+# ── Test & cache ────────────────────────────────────────────
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# ── IDE ─────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── OS ──────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Logs ────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Test images (tuỳ chọn) ──────────────────────────────────
+test_food.jpg
