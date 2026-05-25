@@ -31,6 +31,13 @@ class FoodNutrition(BaseModel):
     estimated_grams: float
     macros: MacroNutrients
     usda_fdc_id: Optional[str] = None
+    data_source: str = "unknown"
+    # "verified" = admin-curated  | confidence 1.0
+    # "pgvector"  = semantic DB hit | confidence 0.9
+    # "usda"      = USDA API hit    | confidence 0.75
+    # "fallback"  = hardcoded dict  | confidence 0.3
+    # "unknown"   = reconstructed from history DB row
+    confidence: float = 1.0
 
 
 # ── CV Analysis Result ──────────────────────────────────────

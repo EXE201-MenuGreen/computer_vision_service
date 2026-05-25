@@ -58,5 +58,8 @@ Thumbs.db
 *.log
 logs/
 
+# ── Training data (khong commit dataset) ────────────────────
+data/
+
 # ── Test images (tuỳ chọn) ──────────────────────────────────
 test_food.jpg

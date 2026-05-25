@@ -13,6 +13,7 @@ import app.stages  # noqa: F401
 from app.pipeline.pipeline_factory import PipelineFactory
 from app.api.cv_router import router as cv_router
 from app.api.history_router import router as history_router
+from app.api.admin_router import router as admin_router
 
 setup_logging()
 logger = get_logger(__name__)
@@ -56,6 +57,7 @@ Instrumentator().instrument(app).expose(app)
 # Routers
 app.include_router(cv_router)
 app.include_router(history_router)
+app.include_router(admin_router)
 
 
 # ── Global exception handler ────────────────────────────────

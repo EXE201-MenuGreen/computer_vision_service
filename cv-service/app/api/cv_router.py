@@ -61,7 +61,7 @@ async def analyze_sync(request: Request, image: UploadFile = File(...)):
     if settings.meal_history_enabled:
         try:
             from app.api.deps import _decode_user_id
-            from app.services import meal_history_service
+            from app.db import meal_history as meal_history_service
             token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
             if token:
                 uid = _decode_user_id(token)

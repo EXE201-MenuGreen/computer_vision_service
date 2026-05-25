@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import get_current_user
 from app.schemas.cv_schemas import MealHistoryItem, MealQueryRequest, MealQueryResponse
-from app.services import meal_history_service
+from app.db import meal_history as meal_history_service
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)

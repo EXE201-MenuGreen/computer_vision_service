@@ -23,7 +23,9 @@ class RawDetection:
     """One bounding-box output from the detector stage."""
     bbox: BoundingBox
     detector_confidence: float
-    crop: Optional[Image.Image] = None  # filled by detector
+    crop: Optional[Image.Image] = None   # filled by detector
+    yolo_label: Optional[str] = None     # class name from YOLO (e.g. "tomato")
+    yolo_label_conf: float = 0.0         # class confidence from YOLO
 
 
 @dataclass

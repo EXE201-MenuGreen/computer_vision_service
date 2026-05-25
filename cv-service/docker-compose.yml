@@ -1,7 +1,11 @@
 version: "3.9"
 
-services:
+networks:
+  menugreen-net:
+    name: menugreen-net # shared network — backend repo join vao day
+    driver: bridge
 
+services:
   # ── Python CV Microservice ────────────────────────────────
   cv-service:
     build:
@@ -10,12 +14,14 @@ services:
     container_name: cv-service
     env_file: .env
     ports:
-      - "8000:8000"
+      - "8000:8000" # host:container — backend goi http://cv-service:8000
     volumes:
-      - ./weights:/app/weights:ro    # mount model weights
+      - ./weights:/app/weights:ro
     depends_on:
       redis:
         condition: service_healthy
+    networks:
+      - menugreen-net
     restart: unless-stopped
     # Uncomment for GPU:
     # deploy:
@@ -42,6 +48,8 @@ services:
       - ./weights:/app/weights:ro
     depends_on:
       - redis
+    networks:
+      - menugreen-net
     restart: unless-stopped
 
   # ── Redis (job queue + cache) ─────────────────────────────
@@ -55,6 +63,8 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    networks:
+      - menugreen-net
     restart: unless-stopped
 
   # ── Flower (Celery dashboard) — dev only ──────────────────
@@ -67,4 +77,6 @@ services:
       - "5555:5555"
     depends_on:
       - redis
-    profiles: ["dev"]   # only runs with: docker compose --profile dev up
+    networks:
+      - menugreen-net
+    profiles: ["dev"]

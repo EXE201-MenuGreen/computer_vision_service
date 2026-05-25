@@ -42,8 +42,13 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
+    # Nutrition cache
+    nutrition_cache_ttl: int = 86400          # seconds — Redis TTL for nutrition entries
+    usda_name_match_threshold: float = 0.35   # min SequenceMatcher ratio OR word overlap to accept USDA result
+
     # Security
     api_secret_key: str = ""
+    admin_api_key: str = ""                   # required for /cv/admin/* endpoints
     allowed_origins: List[str] = ["http://localhost"]
 
     # Logging

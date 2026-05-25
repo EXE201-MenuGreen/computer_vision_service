@@ -59,6 +59,7 @@ class YoloV8Detector(PipelineStage):
         assert self._model is not None, "call load() before process()"
         results = self._model(ctx.image, verbose=False)
         boxes_raw = results[0].boxes
+        names: dict = self._model.names  # {0: "apple", 1: "banana", ...}
 
         for box in boxes_raw:
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
@@ -66,6 +67,10 @@ class YoloV8Detector(PipelineStage):
 
             if conf < _MIN_CONF:
                 continue
+
+            cls_idx = int(box.cls.item())
+            yolo_label = names.get(cls_idx, "unknown")
+            yolo_label_conf = float(box.conf.item())
 
             bbox = BoundingBox(x1=x1, y1=y1, x2=x2, y2=y2)
             crop = ctx.image.crop((x1, y1, x2, y2))
@@ -75,6 +80,8 @@ class YoloV8Detector(PipelineStage):
                     bbox=bbox,
                     detector_confidence=conf,
                     crop=crop,
+                    yolo_label=yolo_label,
+                    yolo_label_conf=yolo_label_conf,
                 )
             )
 
@@ -82,6 +89,7 @@ class YoloV8Detector(PipelineStage):
             "detection_done",
             request_id=ctx.request_id,
             n_detections=len(ctx.detections),
+            labels=[d.yolo_label for d in ctx.detections],
         )
         return ctx
 

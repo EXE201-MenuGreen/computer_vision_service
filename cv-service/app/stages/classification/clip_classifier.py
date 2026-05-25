@@ -354,7 +354,7 @@ async def _store_visual_embedding(
 ) -> None:
     """Store a CLIP visual embedding to Supabase (best-effort, never raises)."""
     try:
-        from app.services.visual_store import store_visual_embedding
+        from app.db.visual_store import store_visual_embedding
         await store_visual_embedding(
             request_id=request_id,
             food_label=food_label,

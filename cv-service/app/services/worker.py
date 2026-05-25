@@ -31,12 +31,11 @@ celery_app.conf.update(
 _pipeline = None
 
 
-def _get_pipeline():
-    """Lazy-build the pipeline on first task execution."""
+def _get_worker_pipeline():
+    """Lazy-build and cache the pipeline on first Celery task execution."""
     global _pipeline
     if _pipeline is None:
-        # Import stages to trigger auto-registration
-        import app.stages  # noqa: F401
+        import app.stages  # noqa: F401  — triggers stage auto-registration
         from app.pipeline.pipeline_factory import PipelineFactory
 
         _pipeline = PipelineFactory.build(settings.pipeline_config)
@@ -61,7 +60,7 @@ def analyze_image_task(self, image_bytes_hex: str, filename: str, content_type: 
         image = Image.open(io.BytesIO(raw)).convert("RGB")
 
         # Run CV pipeline
-        pipeline = _get_pipeline()
+        pipeline = _get_worker_pipeline()
         ctx = pipeline.run(image)
 
         # Nutrition lookup (Option B: outside pipeline)

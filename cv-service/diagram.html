@@ -1,0 +1,795 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <title>CV Service — Architecture Diagram</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: "Segoe UI", system-ui, sans-serif;
+        background: #0f1117;
+        color: #e2e8f0;
+        min-height: 100vh;
+        padding: 32px 24px;
+      }
+
+      h1 {
+        text-align: center;
+        font-size: 22px;
+        font-weight: 600;
+        color: #f8fafc;
+        margin-bottom: 6px;
+        letter-spacing: 0.5px;
+      }
+
+      .subtitle {
+        text-align: center;
+        font-size: 13px;
+        color: #64748b;
+        margin-bottom: 36px;
+      }
+
+      /* ── Layout ── */
+      .diagram {
+        display: flex;
+        align-items: stretch;
+        max-width: 1100px;
+        margin: 0 auto 48px;
+        overflow-x: auto;
+      }
+
+      .diagram > .card {
+        flex: 0 0 190px;
+        width: 190px;
+      }
+
+      .diagram > .arrow {
+        flex: 0 0 56px;
+        width: 56px;
+        justify-content: center;
+      }
+
+      .diagram > .pipeline-col {
+        flex: 0 0 210px;
+        width: 210px;
+      }
+
+      .diagram > .services-col {
+        flex: 0 0 210px;
+        width: 210px;
+      }
+
+      .diagram > .ext-col {
+        flex: 0 0 170px;
+        width: 170px;
+      }
+
+      /* ── Cards ── */
+      .card {
+        border-radius: 10px;
+        padding: 14px 16px;
+        font-size: 12px;
+        line-height: 1.5;
+        border: 1px solid transparent;
+        position: relative;
+      }
+
+      .card .title {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        margin-bottom: 8px;
+        opacity: 0.7;
+      }
+
+      .card .name {
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+
+      .card .detail {
+        font-size: 11px;
+        color: #94a3b8;
+        line-height: 1.6;
+      }
+
+      /* Colors per layer */
+      .layer-client {
+        background: #1e293b;
+        border-color: #334155;
+      }
+      .layer-api {
+        background: #172033;
+        border-color: #1d4ed8;
+      }
+      .layer-pipeline {
+        background: #0f2318;
+        border-color: #16a34a;
+      }
+      .layer-service {
+        background: #1c1208;
+        border-color: #b45309;
+      }
+      .layer-db {
+        background: #1a0f2e;
+        border-color: #7c3aed;
+      }
+      .layer-ext {
+        background: #1a1a1a;
+        border-color: #475569;
+      }
+
+      .layer-client .title {
+        color: #94a3b8;
+      }
+      .layer-api .title {
+        color: #93c5fd;
+      }
+      .layer-pipeline .title {
+        color: #86efac;
+      }
+      .layer-service .title {
+        color: #fcd34d;
+      }
+      .layer-db .title {
+        color: #c4b5fd;
+      }
+      .layer-ext .title {
+        color: #94a3b8;
+      }
+
+      /* ── Arrows ── */
+      .arrow {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        font-size: 10px;
+        color: #475569;
+        user-select: none;
+      }
+
+      .arrow .line {
+        width: 36px;
+        height: 2px;
+        background: linear-gradient(to right, #334155, #475569);
+        position: relative;
+        border-radius: 1px;
+      }
+
+      .arrow .line::after {
+        content: "";
+        position: absolute;
+        right: -1px;
+        top: -4px;
+        border-left: 7px solid #475569;
+        border-top: 5px solid transparent;
+        border-bottom: 5px solid transparent;
+      }
+
+      .arrow .label {
+        font-size: 9px;
+        color: #64748b;
+        text-align: center;
+        max-width: 56px;
+        line-height: 1.3;
+      }
+
+      /* ── Pipeline stages vertical ── */
+      .pipeline-col {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .stage {
+        background: #0f2318;
+        border: 1px solid #166534;
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-size: 11px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .stage-icon {
+        font-size: 18px;
+        width: 28px;
+        text-align: center;
+        flex-shrink: 0;
+      }
+
+      .stage-info .name {
+        font-size: 12px;
+        font-weight: 600;
+        color: #86efac;
+        margin-bottom: 2px;
+      }
+
+      .stage-info .impl {
+        font-size: 10px;
+        color: #4ade80;
+        opacity: 0.7;
+      }
+
+      .stage-arrow {
+        text-align: center;
+        color: #166534;
+        font-size: 14px;
+        line-height: 1;
+        margin: 0 4px;
+      }
+
+      /* ── DB column vertical ── */
+      .db-col {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .db-table {
+        background: #1a0f2e;
+        border: 1px solid #5b21b6;
+        border-radius: 7px;
+        padding: 8px 12px;
+        font-size: 11px;
+      }
+
+      .db-table .tname {
+        font-weight: 600;
+        color: #c4b5fd;
+        font-size: 12px;
+        margin-bottom: 2px;
+      }
+
+      .db-table .tcols {
+        font-size: 10px;
+        color: #7c3aed;
+        opacity: 0.9;
+      }
+
+      /* ── External services ── */
+      .ext-col {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      /* ── Bottom section ── */
+      .bottom-section {
+        max-width: 1100px;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+      }
+
+      .section-card {
+        background: #0f1117;
+        border: 1px solid #1e293b;
+        border-radius: 12px;
+        padding: 18px 20px;
+      }
+
+      .section-card h3 {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        margin-bottom: 14px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .endpoint {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 8px 0;
+        border-bottom: 1px solid #1e293b;
+        font-size: 12px;
+      }
+
+      .endpoint:last-child {
+        border-bottom: none;
+      }
+
+      .method {
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 7px;
+        border-radius: 4px;
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
+
+      .method.post {
+        background: #1d4ed8;
+        color: #bfdbfe;
+      }
+      .method.get {
+        background: #15803d;
+        color: #bbf7d0;
+      }
+
+      .ep-path {
+        font-family: "Courier New", monospace;
+        font-size: 12px;
+        color: #e2e8f0;
+        font-weight: 600;
+      }
+
+      .ep-desc {
+        font-size: 11px;
+        color: #64748b;
+        margin-top: 2px;
+      }
+
+      .flow-item {
+        display: flex;
+        gap: 10px;
+        padding: 6px 0;
+        font-size: 12px;
+        border-bottom: 1px solid #1e293b;
+        align-items: flex-start;
+      }
+
+      .flow-item:last-child {
+        border-bottom: none;
+      }
+
+      .step-num {
+        background: #1e293b;
+        color: #94a3b8;
+        font-size: 10px;
+        font-weight: 700;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
+
+      .flow-text {
+        color: #cbd5e1;
+        line-height: 1.5;
+      }
+      .flow-text span {
+        color: #86efac;
+        font-weight: 600;
+      }
+
+      /* ── Legend ── */
+      .legend {
+        max-width: 1100px;
+        margin: 20px auto 0;
+        display: flex;
+        gap: 20px;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 11px;
+        color: #64748b;
+      }
+
+      .legend-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 3px;
+        flex-shrink: 0;
+      }
+
+      /* ── Async flow ── */
+      .async-band {
+        max-width: 1100px;
+        margin: 0 auto 24px;
+        background: #110f1a;
+        border: 1px solid #312e81;
+        border-radius: 10px;
+        padding: 14px 20px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        font-size: 12px;
+      }
+
+      .async-band .icon {
+        font-size: 20px;
+      }
+
+      .async-band .text {
+        color: #a5b4fc;
+        line-height: 1.6;
+      }
+      .async-band .text strong {
+        color: #c7d2fe;
+      }
+
+      .badge {
+        display: inline-block;
+        font-size: 10px;
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-weight: 600;
+        margin-left: 4px;
+      }
+
+      .badge-green {
+        background: #14532d;
+        color: #86efac;
+      }
+      .badge-purple {
+        background: #2e1065;
+        color: #c4b5fd;
+      }
+      .badge-blue {
+        background: #1e3a5f;
+        color: #93c5fd;
+      }
+      .badge-yellow {
+        background: #431407;
+        color: #fcd34d;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>MenuGreen — CV Service Architecture</h1>
+    <p class="subtitle">FastAPI · YOLOv11 · Supabase pgvector · Redis/Celery</p>
+
+    <!-- ═══════════════════════════════════════════════════════════
+     MAIN FLOW DIAGRAM
+════════════════════════════════════════════════════════════ -->
+    <div class="diagram">
+      <!-- COL 1: Client -->
+      <div class="card layer-client">
+        <div class="title">Client</div>
+        <div class="name">Backend / App</div>
+        <div class="detail">
+          POST ảnh food<br />
+          Bearer JWT (optional)<br />
+          <span class="badge badge-blue">http://cv-service:8000</span>
+        </div>
+      </div>
+
+      <!-- Arrow 1 -->
+      <div class="arrow">
+        <div class="line"></div>
+        <div class="label">multipart/form image</div>
+      </div>
+
+      <!-- COL 2: API Layer -->
+      <div class="card layer-api">
+        <div class="title">API Layer</div>
+        <div class="name">FastAPI Routers</div>
+        <div class="detail">
+          <b>cv_router</b> — /cv/analyze<br />
+          <b>history_router</b> — /cv/history<br />
+          CORS · JWT verify · Prometheus<br />
+          <span class="badge badge-blue">:8000</span>
+        </div>
+      </div>
+
+      <!-- Arrow 2 -->
+      <div class="arrow">
+        <div class="line"></div>
+        <div class="label">PIL Image + ctx</div>
+      </div>
+
+      <!-- COL 3: Pipeline -->
+      <div class="pipeline-col">
+        <div class="stage">
+          <div class="stage-icon">🔧</div>
+          <div class="stage-info">
+            <div class="name">Preprocessor</div>
+            <div class="impl">resize · validate</div>
+          </div>
+        </div>
+        <div class="stage-arrow">↓</div>
+        <div class="stage">
+          <div class="stage-icon">🎯</div>
+          <div class="stage-info">
+            <div class="name">YoloV8Detector</div>
+            <div class="impl">best.pt · 59 classes</div>
+          </div>
+        </div>
+        <div class="stage-arrow">↓</div>
+        <div class="stage">
+          <div class="stage-icon">🏷</div>
+          <div class="stage-info">
+            <div class="name">YoloPassthrough</div>
+            <div class="impl">label từ YOLO output</div>
+          </div>
+        </div>
+        <div class="stage-arrow">↓</div>
+        <div class="stage">
+          <div class="stage-icon">📐</div>
+          <div class="stage-info">
+            <div class="name">HeuristicDepth</div>
+            <div class="impl">bbox area → grams</div>
+          </div>
+        </div>
+        <div class="stage-arrow">↓</div>
+        <div class="stage">
+          <div class="stage-icon">📦</div>
+          <div class="stage-info">
+            <div class="name">Postprocessor</div>
+            <div class="impl">→ DetectedFood list</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Arrow 3 -->
+      <div class="arrow">
+        <div class="line"></div>
+        <div class="label">DetectedFood label + grams</div>
+      </div>
+
+      <!-- COL 4: Services + DB -->
+      <div
+        class="services-col"
+        style="display: flex; flex-direction: column; gap: 12px"
+      >
+        <!-- Nutrition Service -->
+        <div class="card layer-service" style="padding: 12px 14px">
+          <div class="title">NutritionService</div>
+          <div class="name" style="font-size: 13px">4-tier lookup</div>
+          <div class="detail" style="font-size: 10px">
+            1. Memory cache<br />
+            2. pgvector search<br />
+            3. USDA API<br />
+            4. Fallback dict
+          </div>
+        </div>
+
+        <!-- DB Layer -->
+        <div
+          style="
+            background: #120b25;
+            border: 1px solid #5b21b6;
+            border-radius: 10px;
+            padding: 10px 12px;
+          "
+        >
+          <div
+            style="
+              font-size: 10px;
+              font-weight: 700;
+              text-transform: uppercase;
+              color: #7c3aed;
+              letter-spacing: 0.7px;
+              margin-bottom: 8px;
+            "
+          >
+            app/db
+          </div>
+          <div class="db-col">
+            <div class="db-table">
+              <div class="tname">food_nutrition</div>
+              <div class="tcols">vector(384) · match_food · upsert</div>
+            </div>
+            <div class="db-table">
+              <div class="tname">meal_history</div>
+              <div class="tcols">vector(384) · RLS · store/query</div>
+            </div>
+            <div class="db-table">
+              <div class="tname">food_visual</div>
+              <div class="tcols">vector(512) · CLIP embeddings</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Arrow 4 -->
+      <div class="arrow">
+        <div class="line"></div>
+        <div class="label">pgvector RPC</div>
+      </div>
+
+      <!-- COL 5: External -->
+      <div class="ext-col">
+        <div class="card layer-ext" style="padding: 12px 14px">
+          <div class="title">Supabase</div>
+          <div class="name" style="font-size: 13px">PostgreSQL</div>
+          <div class="detail">
+            pgvector · HNSW index<br />Row Level Security<br />
+            <span class="badge badge-purple">anon key</span>
+            <span class="badge badge-purple">service key</span>
+          </div>
+        </div>
+        <div class="card layer-ext" style="padding: 12px 14px">
+          <div class="title">USDA API</div>
+          <div class="name" style="font-size: 13px">FoodData Central</div>
+          <div class="detail">
+            Nutrition lookup<br />tier 3 fallback<br />~300–800ms
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════
+     ASYNC FLOW BAND
+════════════════════════════════════════════════════════════ -->
+    <div class="async-band">
+      <div class="icon">⚡</div>
+      <div class="text">
+        <strong>Async Flow (POST /cv/analyze/async)</strong><br />
+        Client gửi ảnh → API encode hex → <strong>Redis queue</strong>
+        <span class="badge badge-blue">redis:6379</span>
+        → <strong>Celery Worker</strong>
+        <span class="badge badge-yellow">celery-worker</span>
+        chạy pipeline độc lập → kết quả lưu trong Redis 1 giờ → Client poll
+        <code style="font-size: 11px; color: #a5b4fc"
+          >GET /cv/jobs/{job_id}</code
+        >
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════
+     BOTTOM: Endpoints + Request Flow
+════════════════════════════════════════════════════════════ -->
+    <div class="bottom-section">
+      <!-- Endpoints -->
+      <div class="section-card">
+        <h3 style="color: #93c5fd">🔌 API Endpoints</h3>
+
+        <div class="endpoint">
+          <span class="method post">POST</span>
+          <div>
+            <div class="ep-path">/cv/analyze</div>
+            <div class="ep-desc">Sync — trả kết quả ngay, &lt;5s</div>
+          </div>
+        </div>
+        <div class="endpoint">
+          <span class="method post">POST</span>
+          <div>
+            <div class="ep-path">/cv/analyze/async</div>
+            <div class="ep-desc">Async — trả job_id, Celery xử lý</div>
+          </div>
+        </div>
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <div>
+            <div class="ep-path">/cv/jobs/{job_id}</div>
+            <div class="ep-desc">Poll kết quả async job</div>
+          </div>
+        </div>
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <div>
+            <div class="ep-path">/cv/health</div>
+            <div class="ep-desc">Kiểm tra trạng thái models</div>
+          </div>
+        </div>
+        <div class="endpoint">
+          <span class="method post">POST</span>
+          <div>
+            <div class="ep-path">/cv/history/query</div>
+            <div class="ep-desc">Semantic search lịch sử · Bearer JWT</div>
+          </div>
+        </div>
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <div>
+            <div class="ep-path">/cv/history/me</div>
+            <div class="ep-desc">10 bữa gần nhất · Bearer JWT</div>
+          </div>
+        </div>
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <div>
+            <div class="ep-path">/metrics</div>
+            <div class="ep-desc">Prometheus metrics</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Request flow -->
+      <div class="section-card">
+        <h3 style="color: #86efac">🔄 Luồng xử lý /cv/analyze</h3>
+
+        <div class="flow-item">
+          <div class="step-num">1</div>
+          <div class="flow-text">
+            Client POST ảnh (<code>multipart/form-data</code>) + optional
+            <span>Bearer JWT</span>
+          </div>
+        </div>
+        <div class="flow-item">
+          <div class="step-num">2</div>
+          <div class="flow-text">
+            <span>image_validator</span> kiểm tra MIME, kích thước, load PIL
+            Image
+          </div>
+        </div>
+        <div class="flow-item">
+          <div class="step-num">3</div>
+          <div class="flow-text">
+            <span>YoloV8Detector</span> (best.pt) detect bounding boxes + class
+            label
+          </div>
+        </div>
+        <div class="flow-item">
+          <div class="step-num">4</div>
+          <div class="flow-text">
+            <span>YoloPassthrough</span> đọc label trực tiếp từ YOLO — không cần
+            EfficientNet
+          </div>
+        </div>
+        <div class="flow-item">
+          <div class="step-num">5</div>
+          <div class="flow-text">
+            <span>HeuristicDepth</span> ước tính grams từ diện tích bbox
+          </div>
+        </div>
+        <div class="flow-item">
+          <div class="step-num">6</div>
+          <div class="flow-text">
+            <span>NutritionService</span> tra cứu 4-tier: cache → pgvector →
+            USDA → fallback
+          </div>
+        </div>
+        <div class="flow-item">
+          <div class="step-num">7</div>
+          <div class="flow-text">
+            Nếu có JWT → <span>store_meal()</span> lưu vào Supabase
+            <i>(fire-and-forget)</i>
+          </div>
+        </div>
+        <div class="flow-item">
+          <div class="step-num">8</div>
+          <div class="flow-text">
+            Trả <span>AnalysisResult</span> JSON: labels + nutrition +
+            processing_time_ms
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════
+     LEGEND
+════════════════════════════════════════════════════════════ -->
+    <div class="legend">
+      <div class="legend-item">
+        <div class="legend-dot" style="background: #1d4ed8"></div>
+        API Layer
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background: #16a34a"></div>
+        CV Pipeline
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background: #b45309"></div>
+        Business Services
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background: #7c3aed"></div>
+        DB Layer (app/db)
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background: #475569"></div>
+        External Services
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background: #312e81"></div>
+        Async Queue
+      </div>
+    </div>
+  </body>
+</html>

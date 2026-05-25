@@ -178,6 +178,36 @@ class EfficientNetClassifier(PipelineStage):
         return label, float(top_prob.item())
 
 
+# ── YOLO Passthrough ─────────────────────────────────────────
+@classifier_registry.register("yolo_passthrough")
+class YoloPassthroughClassifier(PipelineStage):
+    """
+    Dung truc tiep class label tu YOLO thay vi chay them model phan loai.
+    Chi hoat dong khi detector la YoloV8Detector (co yolo_label trong RawDetection).
+    """
+
+    def load(self) -> None:
+        pass
+
+    def process(self, ctx: StageContext) -> StageContext:
+        for det in ctx.detections:
+            label = det.yolo_label or "unknown"
+            conf  = det.yolo_label_conf or det.detector_confidence
+            ctx.classifications.append(
+                ClassifiedDetection(
+                    raw=det,
+                    label=label,
+                    classify_confidence=conf,
+                )
+            )
+        logger.info(
+            "yolo_passthrough_done",
+            request_id=ctx.request_id,
+            labels=[c.label for c in ctx.classifications],
+        )
+        return ctx
+
+
 # ── Mock (testing) ───────────────────────────────────────────
 @classifier_registry.register("mock")
 class MockClassifier(PipelineStage):
