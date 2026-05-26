@@ -36,10 +36,14 @@ def anon_client():
         )
         return None
 
-    from supabase import create_client
-    _anon = create_client(settings.supabase_url, settings.supabase_anon_key)
-    logger.info("supabase_anon_client_ready", url=settings.supabase_url)
-    return _anon
+    try:
+        from supabase import create_client
+        _anon = create_client(settings.supabase_url, settings.supabase_anon_key)
+        logger.info("supabase_anon_client_ready", url=settings.supabase_url)
+        return _anon
+    except Exception as exc:
+        logger.warning("supabase_anon_client_failed", error=str(exc))
+        return None
 
 
 def service_client():
@@ -55,10 +59,14 @@ def service_client():
         )
         return None
 
-    from supabase import create_client
-    _service = create_client(settings.supabase_url, settings.supabase_service_key)
-    logger.info("supabase_service_client_ready")
-    return _service
+    try:
+        from supabase import create_client
+        _service = create_client(settings.supabase_url, settings.supabase_service_key)
+        logger.info("supabase_service_client_ready")
+        return _service
+    except Exception as exc:
+        logger.warning("supabase_service_client_failed", error=str(exc))
+        return None
 
 
 async def run_rpc(rpc_fn: Callable[[], Any]) -> Any:

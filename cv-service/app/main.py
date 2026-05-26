@@ -17,6 +17,7 @@ from app.api.admin_router import router as admin_router
 
 setup_logging()
 logger = get_logger(__name__)
+API_PREFIX = "/api/v1"
 
 
 # ── Lifespan: build & load pipeline on startup ─────────────
@@ -55,9 +56,9 @@ app.add_middleware(
 Instrumentator().instrument(app).expose(app)
 
 # Routers
-app.include_router(cv_router)
-app.include_router(history_router)
-app.include_router(admin_router)
+app.include_router(cv_router, prefix=API_PREFIX)
+app.include_router(history_router, prefix=API_PREFIX)
+app.include_router(admin_router, prefix=API_PREFIX)
 
 
 # ── Global exception handler ────────────────────────────────
