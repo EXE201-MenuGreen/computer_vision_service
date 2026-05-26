@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CV Service - Hướng Dẫn Tích Hợp</title>
+    <style>
+      :root {
+        --bg: #0b1020;
+        --panel: #111834;
+        --text: #eef1ff;
+        --muted: #b7c0ff;
+        --accent: #5de4c7;
+        --accent-2: #ffb454;
+        --code-bg: #0e1430;
+        --border: #243066;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: "Montserrat", "Segoe UI", Arial, sans-serif;
+        color: var(--text);
+        background: radial-gradient(
+          1200px 800px at 10% 10%,
+          #1b2554 0%,
+          #0b1020 60%
+        );
+      }
+      header {
+        padding: 40px 24px 24px;
+        background: linear-gradient(135deg, #132050 0%, #0b1020 70%);
+        border-bottom: 1px solid var(--border);
+      }
+      header h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+        letter-spacing: 0.5px;
+      }
+      header p {
+        margin: 0;
+        color: var(--muted);
+      }
+      main {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 24px;
+        display: grid;
+        gap: 20px;
+      }
+      section {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 20px;
+      }
+      h2 {
+        margin: 0 0 12px;
+        font-size: 20px;
+      }
+      h3 {
+        margin: 16px 0 8px;
+        font-size: 16px;
+        color: var(--accent);
+      }
+      ul {
+        margin: 8px 0 0 18px;
+      }
+      li {
+        margin: 6px 0;
+      }
+      code,
+      pre {
+        font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+        background: var(--code-bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+      code {
+        padding: 2px 6px;
+      }
+      pre {
+        padding: 14px;
+        overflow-x: auto;
+        margin: 10px 0 0;
+        white-space: pre;
+      }
+      .grid {
+        display: grid;
+        gap: 12px;
+      }
+      .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 12px;
+        margin-left: 6px;
+        background: rgba(93, 228, 199, 0.2);
+        color: var(--accent);
+        border: 1px solid rgba(93, 228, 199, 0.4);
+      }
+      .warn {
+        color: var(--accent-2);
+      }
+      .flow-figure {
+        margin: 16px 0 0;
+        padding: 12px;
+        background: #0f1633;
+        border: 1px dashed var(--border);
+        border-radius: 12px;
+      }
+      .flow-figure img {
+        width: 100%;
+        height: auto;
+        display: block;
+      }
+      .flow-figure figcaption {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      footer {
+        text-align: center;
+        padding: 20px 0 30px;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>CV Service - Hướng Dẫn Tích Hợp</h1>
+      <p>
+        Tài liệu cho backend dev: gọi API, auth, lấy context, và xử lý kết quả.
+      </p>
+    </header>
+
+    <main>
+      <section>
+        <h2>Tổng quan</h2>
+        <p>
+          CV Service nhận ảnh món ăn, chạy pipeline nhận diện và trả về danh
+          sách món + dinh dưỡng. Service không bắt buộc user context để chạy CV,
+          nhưng có thể dùng JWT để lưu lịch sử và personalization.
+        </p>
+        <ul>
+          <li>
+            API chính: <code>POST /cv/analyze</code> (sync),
+            <code>POST /cv/analyze/async</code> (async)
+          </li>
+          <li>
+            Auth: Bearer JWT (optional). Nếu không có token thì không lưu
+            history.
+          </li>
+          <li>
+            Context (profile/survey): backend tự lấy từ DB/cache và áp dụng sau
+            khi nhận kết quả.
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Luồng tích hợp chuẩn</h2>
+        <div class="grid">
+          <div>
+            <h3>1) Client -> Backend</h3>
+            <ul>
+              <li>Client gửi ảnh + JWT</li>
+              <li>Backend validate JWT, lấy <code>user_id</code></li>
+            </ul>
+          </div>
+          <div>
+            <h3>2) Backend -> CV Service</h3>
+            <ul>
+              <li>Gọi <code>/cv/analyze</code> với ảnh</li>
+              <li>
+                Forward <code>Authorization: Bearer &lt;token&gt;</code> nếu cần
+                lưu history
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h3>3) Personalization</h3>
+            <ul>
+              <li>Backend lấy profile/survey từ DB hoặc cache</li>
+              <li>Áp dụng rules (dị ứng, mục tiêu kcal, khẩu phần)</li>
+            </ul>
+          </div>
+          <div>
+            <h3>4) Response</h3>
+            <ul>
+              <li>Trả kết quả đã cá nhân hóa về client</li>
+            </ul>
+          </div>
+        </div>
+        <figure class="flow-figure">
+          <img
+            src="assets/cv-service-flow.svg"
+            alt="Flow tích hợp: Client -> Backend -> CV Service + Profile/Survey -> Response"
+          />
+          <figcaption>
+            Sơ đồ luồng tích hợp và điểm lấy context (profile/survey).
+          </figcaption>
+        </figure>
+      </section>
+
+      <section>
+        <h2>API chính</h2>
+        <h3>POST /cv/analyze <span class="badge">sync</span></h3>
+        <ul>
+          <li>Request: multipart form field <code>image</code></li>
+          <li>
+            Response: JSON gồm <code>detected_foods</code>,
+            <code>nutrition_breakdown</code>, <code>total_macros</code>
+          </li>
+        </ul>
+
+        <h3>POST /cv/analyze/async <span class="badge">async</span></h3>
+        <ul>
+          <li>Response: <code>job_id</code></li>
+          <li>Poll: <code>GET /cv/jobs/{job_id}</code></li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Ví dụ request</h2>
+        <h3>cURL</h3>
+        <pre><code>curl -X POST "http://&lt;cv-service&gt;/cv/analyze" \
+  -H "Authorization: Bearer &lt;JWT&gt;" \
+  -F "image=@/path/to/image.jpg"</code></pre>
+
+        <h3>Python (requests)</h3>
+        <pre><code>import requests
+
+url = "http://&lt;cv-service&gt;/cv/analyze"
+headers = {"Authorization": "Bearer &lt;JWT&gt;"}
+files = {"image": open("/path/to/image.jpg", "rb")}
+
+resp = requests.post(url, headers=headers, files=files, timeout=30)
+resp.raise_for_status()
+print(resp.json())</code></pre>
+      </section>
+
+      <section>
+        <h2>Context: lấy ở đâu và dùng như thế nào</h2>
+        <ul>
+          <li>
+            <strong>JWT claims</strong>: nhét các field nhỏ (diet_type,
+            allergens, goal) vào token để đọc nhanh.
+          </li>
+          <li>
+            <strong>Profile service + cache</strong>: backend lấy
+            <code>user_id</code> -> fetch profile/survey -> cache Redis 5-30
+            phút.
+          </li>
+          <li>
+            <strong>Snapshot từ client</strong>: client gửi một phần context cho
+            request hiện tại.
+          </li>
+        </ul>
+        <p class="warn">
+          Gợi ý: không để CV pipeline phụ thuộc context để tránh tăng latency.
+        </p>
+      </section>
+
+      <section>
+        <h2>Lỗi thường gặp</h2>
+        <ul>
+          <li>
+            <strong>415 Unsupported Media</strong>: thiếu field
+            <code>image</code> hoặc sai MIME.
+          </li>
+          <li>
+            <strong>503 Models are still loading</strong>: service đang warm-up
+            model.
+          </li>
+          <li>
+            <strong>Auth optional</strong>: không có JWT thì vẫn nhận kết quả
+            CV, chỉ không lưu history.
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Best practices</h2>
+        <ul>
+          <li>Giữ CV service stateless, context xử lý ở backend.</li>
+          <li>Cache profile/survey, tránh gọi DB mỗi request.</li>
+          <li>Log <code>request_id</code> để trace end-to-end.</li>
+        </ul>
+      </section>
+    </main>
+
+    <footer>
+      <p>CV Service Integration Guide - May 2026</p>
+    </footer>
+  </body>
+</html>

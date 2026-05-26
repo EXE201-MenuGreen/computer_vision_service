@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="260" viewBox="0 0 900 260" role="img" aria-label="CV Service integration flow">
+  <defs>
+    <style>
+      .box { fill: #121a3a; stroke: #5de4c7; stroke-width: 2; }
+      .title { fill: #eef1ff; font: 600 16px Arial, sans-serif; }
+      .text { fill: #b7c0ff; font: 13px Arial, sans-serif; }
+      .line { stroke: #ffb454; stroke-width: 2; fill: none; }
+      .dash { stroke-dasharray: 6 4; }
+    </style>
+  </defs>
+
+  <rect class="box" x="30" y="40" width="170" height="70" rx="12" />
+  <text class="title" x="115" y="70" text-anchor="middle">Client</text>
+  <text class="text" x="115" y="92" text-anchor="middle">image + JWT</text>
+
+  <rect class="box" x="260" y="40" width="190" height="70" rx="12" />
+  <text class="title" x="355" y="70" text-anchor="middle">Backend</text>
+  <text class="text" x="355" y="92" text-anchor="middle">validate + route</text>
+
+  <rect class="box" x="520" y="40" width="170" height="70" rx="12" />
+  <text class="title" x="605" y="70" text-anchor="middle">CV Service</text>
+  <text class="text" x="605" y="92" text-anchor="middle">detect + macros</text>
+
+  <rect class="box" x="520" y="150" width="170" height="70" rx="12" />
+  <text class="title" x="605" y="180" text-anchor="middle">Profile/Survey</text>
+  <text class="text" x="605" y="202" text-anchor="middle">context lookup</text>
+
+  <rect class="box" x="740" y="40" width="130" height="70" rx="12" />
+  <text class="title" x="805" y="70" text-anchor="middle">Response</text>
+  <text class="text" x="805" y="92" text-anchor="middle">personalized</text>
+
+  <path class="line" d="M200 75 L260 75" />
+  <path class="line" d="M450 75 L520 75" />
+  <path class="line" d="M690 75 L740 75" />
+
+  <path class="line dash" d="M450 90 L520 150" />
+  <path class="line dash" d="M520 185 L450 125" />
+
+  <text class="text" x="470" y="132">context</text>
+</svg>

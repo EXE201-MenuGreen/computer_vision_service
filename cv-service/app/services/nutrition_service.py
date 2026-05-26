@@ -547,7 +547,11 @@ class NutritionService:
         search_text = VIET_TO_USDA_QUERY.get(query, query.replace("_", " "))
 
         # ── Tier 0: admin-verified (always checked first, never cached) ───────
-        verified = await get_verified_food(query)
+        verified = None
+        try:
+            verified = await get_verified_food(query)
+        except Exception as exc:
+            logger.warning("nutrition_verified_lookup_failed", label=query, error=str(exc))
         if verified is not None:
             logger.info("nutrition_tier0_verified", label=query)
             return verified, None, "verified", _CONF["verified"]
