@@ -95,7 +95,7 @@ async def upsert_verified(body: VerifiedFoodRequest) -> dict:
     if client is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Supabase service client not configured.",
+            detail="PostgREST service client not configured.",
         )
 
     await run_rpc(lambda: client.rpc(
@@ -110,7 +110,7 @@ async def upsert_verified(body: VerifiedFoodRequest) -> dict:
             "p_verified_by":   body.verified_by,
             "p_notes":         body.notes,
         },
-    ).execute())
+    ).json())
 
     # Invalidate Redis so next lookup reads the fresh verified entry immediately
     await redis_cache.invalidate(body.food_label)

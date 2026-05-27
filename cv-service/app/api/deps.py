@@ -47,12 +47,12 @@ async def get_current_user(
     FastAPI dependency — validates Supabase JWT and returns user_id.
 
     Raises HTTP 401 if token is missing, expired, or invalid.
-    Raises HTTP 503 if SUPABASE_JWT_SECRET is not configured.
+    Raises HTTP 503 if POSTGREST_JWT_SECRET is not configured.
     """
-    if not settings.supabase_jwt_secret:
+    if not settings.postgrest_jwt_secret:
         raise HTTPException(
             status_code=503,
-            detail="Auth not configured — set SUPABASE_JWT_SECRET",
+            detail="Auth not configured — set POSTGREST_JWT_SECRET",
         )
 
     user_id = _decode_user_id(credentials.credentials)
