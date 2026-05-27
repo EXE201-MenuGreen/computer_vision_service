@@ -5,8 +5,7 @@ Database operations for food_nutrition and food_nutrition_verified tables.
   match_food(label, search_text)   -> (MacroNutrients, fdc_id) | None  (Tier 2)
   upsert_food(...)                 -> None
 
-All functions are no-ops when Supabase is not configured.
-supabase-py v2 is synchronous — calls are wrapped in run_in_executor.
+All functions are no-ops when PostgREST is not configured.
 """
 from __future__ import annotations
 
@@ -30,10 +29,11 @@ async def get_verified_food(label: str) -> Optional[MacroNutrients]:
         return None
 
     try:
-        rows = await run_rpc(lambda: client.rpc(
+        response = await run_rpc(lambda: client.rpc(
             "get_verified_food",
             {"p_label": label},
-        ).execute())
+        ).json())
+        rows = response if isinstance(response, list) else [response] if response else []
 
         if not rows:
             return None
@@ -69,14 +69,15 @@ async def match_food(
 
     try:
         embedding = await embed_text(search_text)
-        rows = await run_rpc(lambda: client.rpc(
+        response = await run_rpc(lambda: client.rpc(
             "match_food",
             {
                 "query_embedding": embedding,
                 "similarity_threshold": settings.vector_similarity_threshold,
                 "match_count": 1,
             },
-        ).execute())
+        ).json())
+        rows = response if isinstance(response, list) else [response] if response else []
 
         if not rows:
             logger.debug("vector_search_no_match", label=label)
@@ -99,7 +100,7 @@ async def match_food(
         return macros, row.get("fdc_id")
 
     except Exception as exc:
-        logger.warning("supabase_match_failed", label=label, error=str(exc))
+        logger.warning("postgrest_match_failed", label=label, error=str(exc))
         return None
 
 
@@ -136,8 +137,8 @@ async def upsert_food(
                 "p_fdc_id": fdc_id,
                 "p_source": source,
             },
-        ).execute())
+        ).json())
         logger.debug("upsert_ok", label=label, source=source)
 
     except Exception as exc:
-        logger.warning("supabase_upsert_failed", label=label, error=str(exc))
+        logger.warning("postgrest_upsert_failed", label=label, error=str(exc))

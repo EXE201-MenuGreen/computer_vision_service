@@ -1,5 +1,5 @@
 """
-app.db — Supabase database access layer.
+app.db — PostgREST database access layer.
 
 Modules:
   client          — anon_client() / service_client() factory

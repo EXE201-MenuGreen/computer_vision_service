@@ -5,7 +5,7 @@ Database operations for meal_history table.
   query_history(user_id, query, limit) -> List[MealHistoryItem]
   get_recent(user_id, limit)           -> List[MealHistoryItem]
 
-Uses service_role client to bypass RLS for writes.
+Uses service client to bypass RLS for writes.
 """
 from __future__ import annotations
 
@@ -122,7 +122,7 @@ async def store_meal(user_id: str, result: AnalysisResult) -> None:
                 "p_meal_text": meal_text,
                 "p_embedding": embedding,
             },
-        ).execute())
+        ).json())
         logger.info("meal_stored", user_id=user_id, request_id=result.request_id)
 
     except Exception as exc:
@@ -141,7 +141,7 @@ async def query_history(
 
     try:
         embedding = await embed_text(query_text)
-        rows = await run_rpc(lambda: client.rpc(
+        response = await run_rpc(lambda: client.rpc(
             "query_meal_history",
             {
                 "p_user_id": user_id,
@@ -149,7 +149,8 @@ async def query_history(
                 "similarity_threshold": settings.meal_history_similarity_threshold,
                 "match_count": limit,
             },
-        ).execute()) or []
+        ).json())
+        rows = response or []
         return [_row_to_item(r, r.get("similarity", 0.0)) for r in rows]
 
     except Exception as exc:
@@ -164,10 +165,11 @@ async def get_recent(user_id: str, limit: int = 10) -> List[MealHistoryItem]:
         return []
 
     try:
-        rows = await run_rpc(lambda: client.rpc(
+        response = await run_rpc(lambda: client.rpc(
             "get_recent_meals",
             {"p_user_id": user_id, "match_count": limit},
-        ).execute()) or []
+        ).json())
+        rows = response or []
         return [_row_to_item(r, similarity=1.0) for r in rows]
 
     except Exception as exc:

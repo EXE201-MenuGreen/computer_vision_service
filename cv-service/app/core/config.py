@@ -24,18 +24,17 @@ class Settings(BaseSettings):
     usda_api_key: str = ""
     usda_base_url: str = "https://api.nal.usda.gov/fdc/v1"
 
-    # Supabase + pgvector semantic search (Option 1)
-    supabase_url: str = ""
-    supabase_anon_key: str = ""
+    # PostgREST + vector semantic search
+    postgrest_url: str = ""
+    postgrest_api_key: str = ""
+    postgrest_service_jwt: str = ""
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     vector_similarity_threshold: float = 0.82
 
     # CLIP zero-shot classifier (Option 2)
     clip_model_name: str = "openai/clip-vit-base-patch32"
 
-    # Supabase Auth + meal history (Option 3)
-    supabase_jwt_secret: str = ""
-    supabase_service_key: str = ""
+    # Auth + meal history (Option 3)
     meal_history_enabled: bool = True
     meal_history_similarity_threshold: float = 0.3
 
@@ -73,7 +72,14 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def require_secrets_in_production(self) -> "Settings":
         if self.app_env == "production":
-            missing = [k for k, v in {"USDA_API_KEY": self.usda_api_key, "API_SECRET_KEY": self.api_secret_key}.items() if not v]
+            missing = [
+                k
+                for k, v in {
+                    "USDA_API_KEY": self.usda_api_key,
+                    "API_SECRET_KEY": self.api_secret_key,
+                }.items()
+                if not v
+            ]
             if missing:
                 raise ValueError(f"Required env vars not set: {', '.join(missing)}")
         return self

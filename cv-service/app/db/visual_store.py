@@ -20,7 +20,7 @@ async def store_visual_embedding(
     embedding: List[float],
 ) -> None:
     """
-    Insert a CLIP visual embedding row into Supabase.
+    Insert a CLIP visual embedding row into PostgREST.
     Never raises — errors are logged and swallowed.
     """
     client = anon_client()
