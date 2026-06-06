@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     postgrest_api_key: str = ""
     postgrest_service_jwt: str = ""
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_device: str = "cpu"
+    embedding_batch_size: int = 64
     vector_similarity_threshold: float = 0.82
 
     # CLIP zero-shot classifier (Option 2)

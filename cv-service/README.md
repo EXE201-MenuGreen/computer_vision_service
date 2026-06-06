@@ -4,23 +4,14 @@ Python FastAPI · YOLOv8 · EfficientNet · DepthAnything v2 · Docker
 
 ## Overview
 
-This service receives an image, runs a computer-vision pipeline to detect and classify food, estimates portions, then looks up nutrition data.
-
-### Current architecture
-
-- `client` → `backend` → `AI service` → `database layer`
-- The AI service talks to the database layer through **PostgREST HTTP APIs**.
-- Redis is used for cache and async job queue.
+This service receives an image, runs a computer-vision pipeline to detect and classify food, estimates portions, and looks up nutrition data.
 
 ## Project structure
 
-```
+```text
 cv-service/
 ├── app/
 │   ├── api/
-│   │   ├── cv_router.py
-│   │   ├── history_router.py
-│   │   └── admin_router.py
 │   ├── core/
 │   ├── db/
 │   ├── embeddings/
@@ -29,31 +20,52 @@ cv-service/
 │   ├── schemas/
 │   ├── services/
 │   └── stages/
-├── scripts/
 ├── tests/
 ├── weights/
-├── .env.example
-├── docker-compose.yml
 ├── Dockerfile
-├── Makefile
-└── requirements.txt
+├── .dockerignore
+├── requirements.txt
+├── requirements-ml.txt
+└── requirements-dev.txt
+```
+
+## Requirements files
+
+The project is split into three dependency groups:
+
+- `requirements.txt` — core runtime dependencies for the API
+- `requirements-ml.txt` — AI / embedding / inference dependencies
+- `requirements-dev.txt` — testing and local development tooling
+
+### Which file should you install?
+
+- For local development or running the full service, install `requirements.txt` and `requirements-ml.txt`.
+- For test/lint work, additionally install `requirements-dev.txt`.
+- For Docker production builds, the Dockerfile installs `requirements.txt` and `requirements-ml.txt` automatically.
+
+Example installation:
+
+```bash
+pip install -r requirements.txt
+pip install -r requirements-ml.txt
+pip install -r requirements-dev.txt
 ```
 
 ## Quick start
 
-### 1) Create and activate virtual environment
+### 1) Create and activate a virtual environment
 
 ```bash
 python -m venv .venv
 ```
 
-On Windows CMD:
+Windows CMD:
 
 ```bash
 .venv\Scripts\activate
 ```
 
-On PowerShell:
+PowerShell:
 
 ```powershell
 .venv\Scripts\Activate.ps1
@@ -61,17 +73,39 @@ On PowerShell:
 
 ### 2) Install dependencies
 
+For normal running:
+
 ```bash
 pip install -r requirements.txt
+pip install -r requirements-ml.txt
+```
+
+For development and tests:
+
+```bash
+pip install -r requirements.txt
+pip install -r requirements-ml.txt
+pip install -r requirements-dev.txt
 ```
 
 ### 3) Configure environment
 
 Copy `.env.example` to `.env` and adjust values as needed.
 
+Important environment values:
+
+```env
+DATABASE_URL=http://your-database-server
+DATABASE_READ_URL=http://your-read-endpoint
+DATABASE_WRITE_URL=http://your-write-endpoint
+EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+EMBEDDING_DEVICE=cpu
+EMBEDDING_BATCH_SIZE=64
+```
+
 ### 4) Start Redis
 
-If you use Docker:
+If Redis is needed in your local workflow:
 
 ```bash
 docker compose up -d redis
@@ -81,6 +115,20 @@ docker compose up -d redis
 
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+## Docker build
+
+Build the production image:
+
+```bash
+docker build -t cv-service .
+```
+
+Run the container:
+
+```bash
+docker run --rm -p 8000:8000 --env-file .env cv-service
 ```
 
 ## API endpoints
@@ -99,23 +147,24 @@ All routes are versioned under `/api/v1`.
 | POST | `/api/v1/cv/admin/verified` | Upsert verified nutrition entry |
 | DELETE | `/api/v1/cv/admin/verified/{label}` | Delete verified nutrition entry |
 | GET | `/metrics` | Prometheus metrics |
-| GET | `/docs` | Swagger UI (dev only) |
+| GET | `/docs` | Swagger UI |
 
-## Database layer
+## Database connection
 
-The service no longer depends on Supabase SDK. It uses PostgREST via HTTP.
+The service now uses a deployed database server instead of Supabase SDK.
 
-Required environment variables:
+Set one of the following:
 
 ```env
-POSTGREST_URL=http://localhost:3000
-POSTGREST_API_KEY=your-api-key
-POSTGREST_SERVICE_JWT=your-service-jwt
+DATABASE_URL=http://localhost:3000
 ```
 
-## Behavior without database
+Or separate read/write endpoints:
 
-If PostgREST is unavailable, the AI pipeline can still run image recognition and fall back to USDA or built-in nutrition data.
+```env
+DATABASE_READ_URL=http://localhost:3000
+DATABASE_WRITE_URL=http://localhost:3001
+```
 
 ## Model weights
 
@@ -126,6 +175,7 @@ If PostgREST is unavailable, the AI pipeline can still run image recognition and
 ## Running tests
 
 ```bash
-pip install pytest pytest-asyncio
 pytest tests/ -v
 ```
+
+If you need the development tooling first, install `requirements-dev.txt`.

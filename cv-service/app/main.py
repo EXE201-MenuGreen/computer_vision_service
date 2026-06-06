@@ -8,7 +8,9 @@ from app.core.config import settings
 from app.core.logging import setup_logging, get_logger
 
 # Import stages so they self-register with registries
-import app.stages  # noqa: F401
+from importlib import import_module
+
+import_module("app.stages")
 
 from app.pipeline.pipeline_factory import PipelineFactory
 from app.api.cv_router import router as cv_router
