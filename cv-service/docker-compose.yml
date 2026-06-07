@@ -15,8 +15,7 @@ services:
     env_file: .env
     ports:
       - "8000:8000" # host:container — backend goi http://cv-service:8000
-    volumes:
-      - ./weights:/app/weights:ro
+
     depends_on:
       redis:
         condition: service_healthy
@@ -44,8 +43,7 @@ services:
       --loglevel=info
       --concurrency=1
       --queues=cv
-    volumes:
-      - ./weights:/app/weights:ro
+
     depends_on:
       - redis
     networks:

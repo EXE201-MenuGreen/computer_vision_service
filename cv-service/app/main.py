@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -6,13 +7,6 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.core.config import settings
 from app.core.logging import setup_logging, get_logger
-
-# Import stages so they self-register with registries
-from importlib import import_module
-
-import_module("app.stages")
-
-from app.pipeline.pipeline_factory import PipelineFactory
 from app.api.cv_router import router as cv_router
 from app.api.history_router import router as history_router
 from app.api.admin_router import router as admin_router
@@ -22,16 +16,10 @@ logger = get_logger(__name__)
 API_PREFIX = "/api/v1"
 
 
-# ── Lifespan: build & load pipeline on startup ─────────────
+# ── Lifespan ───────────────────────────────────────────────
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_: FastAPI):
     logger.info("startup", env=settings.app_env, device=settings.device)
-
-    # Build pipeline from config (reads PIPELINE_* env vars)
-    pipeline = PipelineFactory.build(settings.pipeline_config)
-    pipeline.load_all()  # blocking — intentional on startup
-    app.state.pipeline = pipeline
-
     yield
     logger.info("shutdown")
 

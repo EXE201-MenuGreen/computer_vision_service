@@ -10,10 +10,7 @@ class Settings(BaseSettings):
     app_port: int = 8000
     app_workers: int = 1
 
-    # Model weights / device
-    food_detection_weights: str = "weights/yolov8_food.pt"
-    food_classify_weights: str = "weights/efficientnet_food.pt"
-    depth_model_name: str = "depth-anything/Depth-Anything-V2-Small-hf"
+    # Runtime device configuration (kept for metadata/logging)
     device: str = "cpu"
 
     # Image validation
@@ -24,6 +21,12 @@ class Settings(BaseSettings):
     usda_api_key: str = ""
     usda_base_url: str = "https://api.nal.usda.gov/fdc/v1"
 
+    # AI inference API (remote model)
+    ai_api_base_url: str = ""
+    ai_api_key: str = ""
+    ai_api_timeout_seconds: float = 30.0
+    ai_api_poll_interval_seconds: float = 1.5
+
     # PostgREST + vector semantic search
     postgrest_url: str = ""
     postgrest_api_key: str = ""
@@ -33,8 +36,7 @@ class Settings(BaseSettings):
     embedding_batch_size: int = 64
     vector_similarity_threshold: float = 0.82
 
-    # CLIP zero-shot classifier (Option 2)
-    clip_model_name: str = "openai/clip-vit-base-patch32"
+
 
     # Auth + meal history (Option 3)
     meal_history_enabled: bool = True
@@ -48,28 +50,14 @@ class Settings(BaseSettings):
     usda_name_match_threshold: float = 0.35   # min SequenceMatcher ratio OR word overlap to accept USDA result
 
     # Security
-    api_secret_key: str = ""
+    api_secret_key: str = ""                  # backend → AI service bearer token
     admin_api_key: str = ""                   # required for /cv/admin/* endpoints
     allowed_origins: List[str] = ["http://localhost"]
 
     # Logging
     log_level: str = "INFO"
 
-    # Pipeline stage selection (swap models via config)
-    pipeline_detector: str = "yolov8"
-    pipeline_classifier: str = "efficientnet_b4"
-    pipeline_depth: str = "depth_anything_v2"
-    pipeline_postprocessor: str = "default"
 
-    @property
-    def pipeline_config(self) -> dict:
-        """Config dict consumed by ``PipelineFactory.build()``."""
-        return {
-            "detector": self.pipeline_detector,
-            "classifier": self.pipeline_classifier,
-            "depth": self.pipeline_depth,
-            "postprocessor": self.pipeline_postprocessor,
-        }
 
     @model_validator(mode="after")
     def require_secrets_in_production(self) -> "Settings":
@@ -104,6 +92,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"
 
 
 settings = Settings()

@@ -1,12 +1,17 @@
 """
-Celery worker for async CV inference.
-Use when inference time exceeds acceptable HTTP timeout (~5s).
+Celery worker and job utility wrappers for remote AI inference.
 
-Run with:
-  celery -A app.services.worker worker --loglevel=info --concurrency=2
+This module forwards images to the external AI API using the configured Bearer token
+via a Celery task. Minimal job status checks use Celery's AsyncResult.
 """
+from __future__ import annotations
+
 import asyncio
+import binascii
+from typing import Any, Dict, Optional
+
 from celery import Celery
+
 from app.core.config import settings
 from app.core.logging import get_logger
 
@@ -23,63 +28,50 @@ celery_app.conf.update(
     result_serializer="json",
     accept_content=["json"],
     task_track_started=True,
-    result_expires=3600,   # results live 1 hour in Redis
-    worker_prefetch_multiplier=1,   # process one task at a time (GPU)
+    result_expires=3600,            # results live 1 hour in Redis
+    worker_prefetch_multiplier=1,   # process one task at a time
+    task_default_queue="cv",
 )
-
-# ── Build a pipeline for the worker process ─────────────────
-_pipeline = None
-
-
-def _get_worker_pipeline():
-    """Lazy-build and cache the pipeline on first Celery task execution."""
-    global _pipeline
-    if _pipeline is None:
-        import app.stages  # noqa: F401  — triggers stage auto-registration
-        from app.pipeline.pipeline_factory import PipelineFactory
-
-        _pipeline = PipelineFactory.build(settings.pipeline_config)
-        _pipeline.load_all()
-    return _pipeline
 
 
 @celery_app.task(bind=True, name="cv.analyze_image", max_retries=2)
-def analyze_image_task(self, image_bytes_hex: str, filename: str, content_type: str):
+def analyze_image_task(self, image_bytes_hex: str, filename: str, content_type: str) -> dict[str, Any]:
     """
-    Celery task: receives image bytes (hex-encoded), runs full CV pipeline.
-    Returns serialized AnalysisResult dict.
+    Celery task: receives image bytes (hex-encoded), forwards to the external AI API.
+    Returns the parsed JSON response.
     """
-    from PIL import Image
-    import io
-    import binascii
-    from app.services.nutrition_service import nutrition_service
-    from app.schemas.cv_schemas import AnalysisResult
+    from app.services.inference_client import analyze_image
 
+    image_bytes = binascii.unhexlify(image_bytes_hex)
+
+    loop = asyncio.new_event_loop()
     try:
-        raw = binascii.unhexlify(image_bytes_hex)
-        image = Image.open(io.BytesIO(raw)).convert("RGB")
-
-        # Run CV pipeline
-        pipeline = _get_worker_pipeline()
-        ctx = pipeline.run(image)
-
-        # Nutrition lookup (Option B: outside pipeline)
-        loop = asyncio.new_event_loop()
-        nutrition_breakdown = loop.run_until_complete(
-            nutrition_service.lookup_batch(ctx.food_items)
+        result = loop.run_until_complete(
+            analyze_image(image_bytes, filename, content_type)
         )
-        total = nutrition_service.sum_macros(nutrition_breakdown)
-        loop.close()
-
-        result = AnalysisResult(
-            request_id=ctx.request_id,
-            detected_foods=ctx.food_items,
-            nutrition_breakdown=nutrition_breakdown,
-            total_macros=total,
-            processing_time_ms=ctx.processing_time_ms,
-        )
-        return result.model_dump()
-
+        return result
     except Exception as exc:
         logger.error("celery_task_failed", error=str(exc), task_id=self.request.id)
         raise self.retry(exc=exc, countdown=2)
+    finally:
+        loop.close()
+
+
+def enqueue_inference_job(image_bytes: bytes, filename: str, content_type: str) -> str:
+    """Create a background job for remote AI inference and return the job id."""
+    image_bytes_hex = binascii.hexlify(image_bytes).decode("utf-8")
+    task = analyze_image_task.delay(image_bytes_hex, filename, content_type)
+    return task.id
+
+
+def get_job_result(job_id: str) -> Optional[Dict[str, Any]]:
+    """Query Celery's AsyncResult backend for the job result."""
+    from celery.result import AsyncResult
+    res = AsyncResult(job_id, app=celery_app)
+    if res.state == "SUCCESS":
+        return {"status": "done", "result": res.result}
+    elif res.state == "FAILURE":
+        return {"status": "failed", "error": str(res.result)}
+    elif res.state in ("PENDING", "RECEIVED", "STARTED", "RETRY"):
+        return None  # Represents processing/queued in cv_router
+    return None

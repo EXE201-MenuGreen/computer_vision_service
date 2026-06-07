@@ -47,11 +47,20 @@ class TextEmbedder:
             return self._zero_vector()
 
         try:
-            return self._model.encode(
+            result = self._model.encode(
                 text,
                 normalize_embeddings=True,
                 show_progress_bar=False,
-            ).tolist()
+            )
+            if isinstance(result, list) and result:
+                first = result[0]
+                if hasattr(first, "tolist"):
+                    return first.tolist()
+            if isinstance(result, list) and result:
+                first = result[0]
+                if hasattr(first, "tolist"):
+                    return first.tolist()
+            return self._zero_vector()
         except Exception as exc:
             logger.warning("embedding_encode_failed", error=str(exc))
             return self._zero_vector()
@@ -64,15 +73,21 @@ class TextEmbedder:
             return [self._zero_vector() for _ in texts]
 
         try:
-            return [
-                v.tolist()
-                for v in self._model.encode(
-                    texts,
-                    batch_size=settings.embedding_batch_size,
-                    normalize_embeddings=True,
-                    show_progress_bar=False,
-                )
-            ]
+            result = self._model.encode(
+                texts,
+                batch_size=settings.embedding_batch_size,
+                normalize_embeddings=True,
+                show_progress_bar=False,
+            )
+            if isinstance(result, list) and result:
+                first = result[0]
+                if hasattr(first, "tolist"):
+                    return first.tolist()
+            if isinstance(result, list) and result:
+                first = result[0]
+                if hasattr(first, "tolist"):
+                    return first.tolist()
+            return [v.tolist() if hasattr(v, "tolist") else self._zero_vector() for v in result]
         except Exception as exc:
             logger.warning("embedding_encode_batch_failed", error=str(exc))
             return [self._zero_vector() for _ in texts]

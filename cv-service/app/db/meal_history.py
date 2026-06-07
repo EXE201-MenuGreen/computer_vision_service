@@ -30,7 +30,7 @@ logger = get_logger(__name__)
 def _build_meal_text(result: AnalysisResult) -> str:
     if result.nutrition_breakdown:
         foods_str = ", ".join(
-            f"{f.food_label} {f.estimated_grams:.0f}g"
+            f"{f.food_label_key} {f.estimated_grams:.0f}g"
             for f in result.nutrition_breakdown
         )
     else:
@@ -48,7 +48,8 @@ def _build_meal_text(result: AnalysisResult) -> str:
 def _foods_to_json(breakdown: List[FoodNutrition]) -> str:
     return json.dumps([
         {
-            "food_label": f.food_label,
+            "food_label_key": f.food_label_key,
+            "food_label_vi": f.food_label_vi,
             "estimated_grams": f.estimated_grams,
             "macros": {
                 "calories_kcal": f.macros.calories_kcal,
@@ -84,7 +85,8 @@ def _row_to_item(row: dict, similarity: float = 0.0) -> MealHistoryItem:
 
     foods = [
         FoodNutrition(
-            food_label=f["food_label"],
+            food_label_key=f["food_label_key"],
+            food_label_vi=f["food_label_vi"],
             estimated_grams=f["estimated_grams"],
             macros=MacroNutrients(**f["macros"]),
             usda_fdc_id=f.get("usda_fdc_id"),

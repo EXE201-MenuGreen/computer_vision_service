@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 
 # ── Detection ──────────────────────────────────────────────
@@ -11,7 +11,9 @@ class BoundingBox(BaseModel):
 
 
 class DetectedFood(BaseModel):
-    label: str
+    id_nguyen_lieu: str
+    ten_nguyen_lieu_ky_thuat: str = Field(description="Canonical technical key, e.g. 'uc_ga'")
+    ten_nguyen_lieu: str = Field(description="Vietnamese display label, e.g. 'Ức gà tươi sống'")
     confidence: float = Field(ge=0.0, le=1.0)
     bbox: BoundingBox
     estimated_grams: float = Field(ge=0.0)
@@ -27,7 +29,8 @@ class MacroNutrients(BaseModel):
 
 
 class FoodNutrition(BaseModel):
-    food_label: str
+    food_label_key: str
+    food_label_vi: str
     estimated_grams: float
     macros: MacroNutrients
     usda_fdc_id: Optional[str] = None
@@ -49,6 +52,53 @@ class AnalysisResult(BaseModel):
     processing_time_ms: float
 
 
+# ── AI API response payload ────────────────────────────────
+class IngredientItem(BaseModel):
+    id_nguyen_lieu: str
+    ten_nguyen_lieu: str
+    ten_nguyen_lieu_ky_thuat: str
+    khoi_luong_uoc_tinh_g: float
+    do_chinh_xac_uoc_tinh: str
+
+
+class RecipeIngredient(BaseModel):
+    ten: str
+    ten_ky_thuat: str
+    khoi_luong_g: float
+
+
+class NutritionInfo(BaseModel):
+    tong_calories: float
+    protein_g: float
+    carbs_g: float
+    fat_g: float
+    fiber_g: float
+
+
+class SuggestedDish(BaseModel):
+    id_mon_an_goi_y: str
+    ten_mon_an: str
+    ten_mon_an_ky_thuat: Optional[str] = None
+    mo_ta_ngan: str
+    do_kha_thi: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    nguyen_lieu_su_dung: List[RecipeIngredient]
+    thong_tin_dinh_duong_mon_an: NutritionInfo
+
+
+class AIInferenceResponse(BaseModel):
+    job_id: str
+    request_id: str
+    api_version: str = "v1"
+    status: Literal["queued", "processing", "done", "failed"]
+    processing_time_ms: Optional[float] = None
+    luong_tin_cay_chung: Optional[str] = None
+    nguyen_lieu_tho_quet_duoc: Optional[List[IngredientItem]] = None
+    danh_sach_mon_an_goi_y: Optional[List[SuggestedDish]] = None
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+
+
 # ── Async job ──────────────────────────────────────────────
 class JobResponse(BaseModel):
     job_id: str
@@ -59,7 +109,7 @@ class JobResponse(BaseModel):
 class JobStatusResponse(BaseModel):
     job_id: str
     status: str                   # queued | processing | done | failed
-    result: Optional[AnalysisResult] = None
+    result: Optional[AIInferenceResponse] = None
     error: Optional[str] = None
 
 

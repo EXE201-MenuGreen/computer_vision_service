@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt requirements-ml.txt ./
+COPY requirements.txt ./
 
 # Create an isolated virtual environment for Python dependencies.
 RUN python -m venv /opt/venv
@@ -22,8 +22,8 @@ ENV PATH="/opt/venv/bin:${PATH}"
 
 # Install core runtime first, then AI dependencies only for this image.
 RUN pip install --upgrade pip && \
-    pip install -r requirements.txt && \
-    pip install -r requirements-ml.txt
+    pip install -r requirements.txt
+   
 
 
 FROM python:3.11-slim AS runtime
@@ -35,12 +35,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Runtime shared libraries for OpenCV / ML packages.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1 \
-    libglib2.0-0 \
-    libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
+
 
 # Copy the virtual environment from the builder stage.
 COPY --from=builder /opt/venv /opt/venv
@@ -50,7 +45,7 @@ RUN useradd --create-home --uid 1001 --shell /bin/bash cvuser
 
 # Copy application code with correct ownership.
 COPY --chown=cvuser:cvuser app/ ./app/
-COPY --chown=cvuser:cvuser weights/ ./weights/
+
 
 USER cvuser
 

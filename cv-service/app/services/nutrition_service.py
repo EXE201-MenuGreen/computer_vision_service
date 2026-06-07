@@ -652,10 +652,11 @@ class NutritionService:
         results = []
         for food in detected:
             macros_per_100g, fdc_id, data_source, confidence = \
-                await self._fetch_nutrition(food.label)
+                await self._fetch_nutrition(food.ten_nguyen_lieu_ky_thuat)
             scaled = _scale(macros_per_100g, food.estimated_grams)
             results.append(FoodNutrition(
-                food_label=food.label,
+                food_label_key=food.ten_nguyen_lieu_ky_thuat,
+                food_label_vi=food.ten_nguyen_lieu,
                 estimated_grams=food.estimated_grams,
                 macros=scaled,
                 usda_fdc_id=fdc_id,

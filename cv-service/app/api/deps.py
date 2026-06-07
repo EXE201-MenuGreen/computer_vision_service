@@ -24,14 +24,14 @@ def _decode_user_id(token: str) -> Optional[str]:
     Decode a Supabase JWT and return the sub (user UUID).
     Returns None on any error — does NOT raise.
     """
-    if not settings.supabase_jwt_secret or not token:
+    if not settings.postgrest_service_jwt or not token:
         return None
     try:
         from jose import JWTError, jwt
 
         payload = jwt.decode(
             token,
-            settings.supabase_jwt_secret,
+            settings.postgrest_service_jwt,
             algorithms=["HS256"],
             options={"verify_aud": False},  # Supabase omits aud claim
         )
@@ -49,7 +49,7 @@ async def get_current_user(
     Raises HTTP 401 if token is missing, expired, or invalid.
     Raises HTTP 503 if POSTGREST_JWT_SECRET is not configured.
     """
-    if not settings.postgrest_jwt_secret:
+    if not settings.postgrest_service_jwt:
         raise HTTPException(
             status_code=503,
             detail="Auth not configured — set POSTGREST_JWT_SECRET",
