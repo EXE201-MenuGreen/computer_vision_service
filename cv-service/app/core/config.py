@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     ai_api_timeout_seconds: float = 30.0
     ai_api_poll_interval_seconds: float = 1.5
 
+    # AI provider configuration (remote_api | gemini | mock)
+    ai_provider: str = "mock"
+    # Gemini API configuration
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.0-flash"
+
+
     # PostgREST + vector semantic search
     postgrest_url: str = ""
     postgrest_api_key: str = ""

@@ -95,12 +95,10 @@ Copy `.env.example` to `.env` and adjust values as needed.
 Important environment values:
 
 ```env
-DATABASE_URL=http://your-database-server
-DATABASE_READ_URL=http://your-read-endpoint
-DATABASE_WRITE_URL=http://your-write-endpoint
-EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
-EMBEDDING_DEVICE=cpu
-EMBEDDING_BATCH_SIZE=64
+AI_PROVIDER=gemini
+GEMINI_API_KEY=your-gemini-api-key
+GEMINI_MODEL=gemini-2.0-flash
+REDIS_URL=redis://localhost:6379/0
 ```
 
 ### 4) Start Redis
@@ -112,6 +110,7 @@ docker compose up -d redis
 ```
 
 ### 5) Start API service
+ source ../.venv/Scripts/activate
 
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload

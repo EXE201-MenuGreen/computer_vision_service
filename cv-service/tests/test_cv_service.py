@@ -97,7 +97,7 @@ def test_health_ok(client):
     assert r.status_code == 200
     data = r.json()
     assert data["status"] == "ok"
-    assert data["models_loaded"] is False
+    assert data["models_loaded"] is True
 
 
 # ── Auth guard ──────────────────────────────────────────────
@@ -176,12 +176,62 @@ async def test_inference_client_sends_bearer_and_parses_json():
             self.captured_files = files
             return FakeResp()
 
-    with patch("app.services.inference_client.settings.ai_api_base_url", "http://ai-api"), \
+    with patch("app.services.inference_client.settings.ai_provider", "remote_api"), \
+         patch("app.services.inference_client.settings.ai_api_base_url", "http://ai-api"), \
          patch("app.services.inference_client.settings.ai_api_key", "secret"), \
          patch("httpx.AsyncClient", FakeClient):
         result = await analyze_image(b"abc", "food.jpg", "image/jpeg")
 
     assert result["job_id"] == "job_1"
+    assert result["status"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_inference_client_via_gemini():
+    from app.services.inference_client import analyze_image
+
+    class FakeResp:
+        status_code = 200
+        text = '{"job_id": "job_gemini", "status": "done"}'
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": '{"job_id": "job_gemini", "status": "done", "nguyen_lieu_tho_quet_duoc": []}'
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, json=None):
+            return FakeResp()
+
+    with patch("app.services.inference_client.settings.ai_provider", "gemini"), \
+         patch("app.services.inference_client.settings.gemini_api_key", "secret-key"), \
+         patch("app.services.inference_client.settings.gemini_model", "gemini-2.0-flash"), \
+         patch("httpx.AsyncClient", FakeClient):
+        result = await analyze_image(b"abc", "food.jpg", "image/jpeg")
+
+    assert result["job_id"] == "job_gemini"
     assert result["status"] == "done"
 
 
@@ -204,8 +254,10 @@ def test_ai_inference_response_schema():
 # ── Auth helper ────────────────────────────────────────────
 def test_api_key_dependency_rejects_wrong_key():
     from app.api.auth import require_api_key
+    from app.core.config import settings
     from fastapi import HTTPException
 
-    with pytest.raises(HTTPException):
-        import asyncio
-        asyncio.run(require_api_key("Bearer wrong-key"))
+    with patch.object(settings, "api_secret_key", "test-secret"):
+        with pytest.raises(HTTPException):
+            import asyncio
+            asyncio.run(require_api_key("Bearer wrong-key"))

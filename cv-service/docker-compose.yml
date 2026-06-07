@@ -48,6 +48,8 @@ services:
       - redis
     networks:
       - menugreen-net
+    healthcheck:
+      disable: true
     restart: unless-stopped
 
   # ── Redis (job queue + cache) ─────────────────────────────

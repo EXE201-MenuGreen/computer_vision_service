@@ -1,2 +1,0 @@
-# ML/local inference dependencies removed.
-# This service now uses an external AI API via Bearer token.

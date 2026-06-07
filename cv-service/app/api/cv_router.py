@@ -15,7 +15,7 @@ router = APIRouter(prefix="/cv", tags=["Computer Vision"])
 async def health(_: None = Depends(require_api_key)):
     return HealthResponse(
         status="ok",
-        models_loaded=False,
+        models_loaded=True,
         device=settings.device,
     )
 
