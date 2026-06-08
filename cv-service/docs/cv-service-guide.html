@@ -20,7 +20,7 @@
       }
       body {
         margin: 0;
-        font-family: "Montserrat", "Segoe UI", Arial, sans-serif;
+        font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif;
         color: var(--text);
         background: radial-gradient(
           1200px 800px at 10% 10%,
@@ -58,6 +58,8 @@
       h2 {
         margin: 0 0 12px;
         font-size: 20px;
+        border-left: 4px solid var(--accent);
+        padding-left: 10px;
       }
       h3 {
         margin: 16px 0 8px;
@@ -88,7 +90,13 @@
       }
       .grid {
         display: grid;
-        gap: 12px;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      @media (max-width: 768px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
       }
       .badge {
         display: inline-block;
@@ -100,25 +108,19 @@
         color: var(--accent);
         border: 1px solid rgba(93, 228, 199, 0.4);
       }
+      .badge-async {
+        background: rgba(255, 180, 84, 0.2);
+        color: var(--accent-2);
+        border: 1px solid rgba(255, 180, 84, 0.4);
+      }
       .warn {
         color: var(--accent-2);
       }
-      .flow-figure {
-        margin: 16px 0 0;
+      .flow-step-box {
+        background: rgba(14, 20, 48, 0.5);
+        border: 1px solid var(--border);
         padding: 12px;
-        background: #0f1633;
-        border: 1px dashed var(--border);
-        border-radius: 12px;
-      }
-      .flow-figure img {
-        width: 100%;
-        height: auto;
-        display: block;
-      }
-      .flow-figure figcaption {
-        margin-top: 8px;
-        color: var(--muted);
-        font-size: 13px;
+        border-radius: 8px;
       }
       footer {
         text-align: center;
@@ -131,168 +133,188 @@
     <header>
       <h1>CV Service - Hướng Dẫn Tích Hợp</h1>
       <p>
-        Tài liệu cho backend dev: gọi API, auth, lấy context, và xử lý kết quả.
+        Tài liệu hoạt động: luồng bất đồng bộ Celery + Redis, xác thực API_SECRET_KEY và phân tích ảnh bằng Gemini.
       </p>
     </header>
 
     <main>
       <section>
-        <h2>Tổng quan</h2>
+        <h2>Tổng quan về cách hoạt động</h2>
         <p>
-          CV Service nhận ảnh món ăn, chạy pipeline nhận diện và trả về danh
-          sách món + dinh dưỡng. Service không bắt buộc user context để chạy CV,
-          nhưng có thể dùng JWT để lưu lịch sử và personalization.
+          CV Service nhận ảnh món ăn/nguyên liệu từ C# Backend, đẩy vào hàng đợi bất đồng bộ Celery, và sử dụng mô hình trí tuệ nhân tạo ngoài (như <strong>Google Gemini 2.5 Flash</strong>) để phân tích hình ảnh trả về thông tin dinh dưỡng, danh sách nguyên liệu và gợi ý các món ăn Việt Nam dưới dạng dữ liệu cấu trúc JSON chuẩn hóa.
         </p>
         <ul>
           <li>
-            API chính: <code>POST /cv/analyze</code> (sync),
-            <code>POST /cv/analyze/async</code> (async)
+            <strong>Xử lý bất đồng bộ (Celery + Redis)</strong>: Toàn bộ quá trình gọi AI ngoài mất từ 3-15 giây tùy kích thước ảnh và tốc độ API. Để không gây treo request của C# backend, request phân tích sẽ trả về <code>job_id</code> ngay lập tức. C# backend sẽ định kỳ poll trạng thái để lấy kết quả.
           </li>
           <li>
-            Auth: Bearer JWT (optional). Nếu không có token thì không lưu
-            history.
-          </li>
-          <li>
-            Context (profile/survey): backend tự lấy từ DB/cache và áp dụng sau
-            khi nhận kết quả.
+            <strong>Xác thực Service-to-Service</strong>: Kết nối giữa C# Backend và Python CV Service được bảo vệ bằng cơ chế <code>Bearer Token</code> sử dụng một khóa bí mật dùng chung (<code>API_SECRET_KEY</code>).
           </li>
         </ul>
       </section>
 
       <section>
-        <h2>Luồng tích hợp chuẩn</h2>
+        <h2>Luồng tích hợp hệ thống</h2>
         <div class="grid">
-          <div>
-            <h3>1) Client -> Backend</h3>
+          <div class="flow-step-box">
+            <h3>1) Client gửi ảnh</h3>
             <ul>
-              <li>Client gửi ảnh + JWT</li>
-              <li>Backend validate JWT, lấy <code>user_id</code></li>
+              <li>Client (Mobile/Web) gửi ảnh lên C# Backend (MenuGreen.API).</li>
+              <li>C# Backend xác thực thông tin tài khoản và kiểm tra quyền hạn người dùng.</li>
             </ul>
           </div>
-          <div>
-            <h3>2) Backend -> CV Service</h3>
+          <div class="flow-step-box">
+            <h3>2) Khởi tạo Job phân tích</h3>
             <ul>
-              <li>Gọi <code>/cv/analyze</code> với ảnh</li>
-              <li>
-                Forward <code>Authorization: Bearer &lt;token&gt;</code> nếu cần
-                lưu history
-              </li>
+              <li>C# Backend gọi API <code>POST /api/v1/cv/analyze</code> gửi kèm ảnh và header <code>Authorization: Bearer &lt;API_SECRET_KEY&gt;</code>.</li>
+              <li>Python CV Service nhận ảnh, sinh <code>job_id</code> và đẩy tác vụ chạy ngầm vào hàng đợi Celery qua Redis, trả về <code>job_id</code> ngay cho C# Backend.</li>
             </ul>
           </div>
-          <div>
-            <h3>3) Personalization</h3>
+          <div class="flow-step-box">
+            <h3>3) Polling lấy kết quả</h3>
             <ul>
-              <li>Backend lấy profile/survey từ DB hoặc cache</li>
-              <li>Áp dụng rules (dị ứng, mục tiêu kcal, khẩu phần)</li>
+              <li>C# Backend thực hiện lặp (loop) định kỳ mỗi 2 giây gọi API <code>GET /api/v1/cv/jobs/{job_id}</code>.</li>
+              <li>Khi Celery worker gọi Gemini API thành công và ghi kết quả vào Redis, API sẽ trả về trạng thái <code>"status": "done"</code> kèm kết quả JSON.</li>
             </ul>
           </div>
-          <div>
-            <h3>4) Response</h3>
+          <div class="flow-step-box">
+            <h3>4) Xử lý logic & Trả phản hồi</h3>
             <ul>
-              <li>Trả kết quả đã cá nhân hóa về client</li>
+              <li>C# Backend lấy danh sách nguyên liệu sử dụng từ kết quả phân tích để so khớp với danh sách dị ứng của người dùng (Allergens matching).</li>
+              <li>Lưu lịch sử bữa ăn vào Database SQL Server và trả kết quả đã cá nhân hóa về cho Client.</li>
             </ul>
           </div>
         </div>
-        <figure class="flow-figure">
-          <img
-            src="assets/cv-service-flow.svg"
-            alt="Flow tích hợp: Client -> Backend -> CV Service + Profile/Survey -> Response"
-          />
-          <figcaption>
-            Sơ đồ luồng tích hợp và điểm lấy context (profile/survey).
-          </figcaption>
-        </figure>
       </section>
 
       <section>
-        <h2>API chính</h2>
-        <h3>POST /cv/analyze <span class="badge">sync</span></h3>
+        <h2>Chi tiết API Endpoints</h2>
+        
+        <h3>1. POST /api/v1/cv/analyze <span class="badge badge-async">Tạo Job (Async)</span></h3>
         <ul>
-          <li>Request: multipart form field <code>image</code></li>
-          <li>
-            Response: JSON gồm <code>detected_foods</code>,
-            <code>nutrition_breakdown</code>, <code>total_macros</code>
+          <li><strong>Mô tả</strong>: Tiếp nhận ảnh, validate định dạng & dung lượng, đẩy vào hàng đợi Celery.</li>
+          <li><strong>Headers</strong>: <code>Authorization: Bearer &lt;API_SECRET_KEY&gt;</code></li>
+          <li><strong>Body (Multipart form-data)</strong>: <code>image</code> (File ảnh JPEG/PNG/WebP)</li>
+          <li><strong>Response (200 OK)</strong>:
+            <pre><code>{
+  "job_id": "56aadc60-478b-4584-9959-699140a042ba",
+  "status": "queued",
+  "message": "Analysis queued. Poll /cv/jobs/{job_id} for result."
+}</code></pre>
           </li>
         </ul>
 
-        <h3>POST /cv/analyze/async <span class="badge">async</span></h3>
+        <h3>2. GET /api/v1/cv/jobs/{job_id} <span class="badge">Lấy kết quả Job (Poll)</span></h3>
         <ul>
-          <li>Response: <code>job_id</code></li>
-          <li>Poll: <code>GET /cv/jobs/{job_id}</code></li>
+          <li><strong>Headers</strong>: <code>Authorization: Bearer &lt;API_SECRET_KEY&gt;</code></li>
+          <li><strong>Response (Đang xử lý)</strong>:
+            <pre><code>{
+  "job_id": "56aadc60-478b-4584-9959-699140a042ba",
+  "status": "processing",
+  "result": null,
+  "error": null
+}</code></pre>
+          </li>
+          <li><strong>Response (Thành công)</strong>:
+            <pre><code>{
+  "job_id": "56aadc60-478b-4584-9959-699140a042ba",
+  "status": "done",
+  "result": {
+    "api_version": "v1",
+    "luong_tin_cay_chung": "92%",
+    "nguyen_lieu_tho_quet_duoc": [
+      {
+        "id_nguyen_lieu": "raw_01",
+        "ten_nguyen_lieu": "Cá ngừ tươi",
+        "ten_nguyen_lieu_ky_thuat": "ca_ngu_tuoi",
+        "khoi_luong_uoc_tinh_g": 1800.0,
+        "do_chinh_xac_uoc_tinh": "85%"
+      }
+    ],
+    "danh_sach_mon_an_goi_y": [
+      {
+        "id_mon_an_goi_y": "rec_01",
+        "ten_mon_an": "Bún cá ngừ nấu thơm (dứa)",
+        "ten_mon_an_ky_thuat": "bun_ca_ngu_nau_thom_dua",
+        "mo_ta_ngan": "Món ăn ngon và đậm đà...",
+        "do_kha_thi": "95%",
+        "confidence": 0.95,
+        "nguyen_lieu_su_dung": [...],
+        "thong_tin_dinh_duong_mon_an": {
+          "tong_calories": 500.0,
+          "protein_g": 40.2,
+          "carbs_g": 67.0,
+          "fat_g": 5.8,
+          "fiber_g": 3.0
+        }
+      }
+    ]
+  },
+  "error": null
+}</code></pre>
+          </li>
         </ul>
       </section>
 
       <section>
-        <h2>Ví dụ request</h2>
-        <h3>cURL</h3>
-        <pre><code>curl -X POST "http://&lt;cv-service&gt;/cv/analyze" \
-  -H "Authorization: Bearer &lt;JWT&gt;" \
+        <h2>Ví dụ request phía lập trình viên</h2>
+        
+        <h3>1. cURL (Gửi phân tích ảnh)</h3>
+        <pre><code>curl -X POST "http://localhost:8000/api/v1/cv/analyze" \
+  -H "Authorization: Bearer 4e9cd42d7b29cc07920ef88f34bc63c4d0fa36a2e19c1e03bd35b9f8bf9fb87e" \
   -F "image=@/path/to/image.jpg"</code></pre>
 
-        <h3>Python (requests)</h3>
-        <pre><code>import requests
+        <h3>2. C# (Sử dụng HttpClient trong Services)</h3>
+        <pre><code>// 1. Gửi ảnh và lấy JobID
+var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/cv/analyze");
+request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiSecretKey);
+var content = new MultipartFormDataContent();
+content.Add(new StreamContent(imageStream), "image", "food.jpg");
+request.Content = content;
 
-url = "http://&lt;cv-service&gt;/cv/analyze"
-headers = {"Authorization": "Bearer &lt;JWT&gt;"}
-files = {"image": open("/path/to/image.jpg", "rb")}
+var response = await _httpClient.SendAsync(request);
+var jobInfo = await response.Content.ReadFromJsonAsync&lt;CvJobResponse&gt;();
+var jobId = jobInfo.JobId;
 
-resp = requests.post(url, headers=headers, files=files, timeout=30)
-resp.raise_for_status()
-print(resp.json())</code></pre>
+// 2. Vòng lặp polling kết quả
+while(true) {
+    await Task.Delay(2000);
+    var pollReq = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/cv/jobs/{jobId}");
+    pollReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiSecretKey);
+    var pollResp = await _httpClient.SendAsync(pollReq);
+    var status = await pollResp.Content.ReadFromJsonAsync&lt;CvJobStatusResponse&gt;();
+    if(status.Status == "done") {
+        return status.Result; // Hoàn thành phân tích!
+    }
+}</code></pre>
       </section>
 
       <section>
-        <h2>Context: lấy ở đâu và dùng như thế nào</h2>
+        <h2>Một số mã lỗi hay gặp</h2>
         <ul>
           <li>
-            <strong>JWT claims</strong>: nhét các field nhỏ (diet_type,
-            allergens, goal) vào token để đọc nhanh.
+            <strong>401 Unauthorized</strong>: Mã `API_SECRET_KEY` gửi lên trong Header `Authorization` không trùng khớp hoặc bị thiếu.
           </li>
           <li>
-            <strong>Profile service + cache</strong>: backend lấy
-            <code>user_id</code> -> fetch profile/survey -> cache Redis 5-30
-            phút.
+            <strong>422 Unprocessable Entity</strong>: Gửi thiếu trường `image` hoặc file gửi lên không nằm trong danh sách định dạng ảnh cho phép (JPEG, PNG, WebP).
           </li>
           <li>
-            <strong>Snapshot từ client</strong>: client gửi một phần context cho
-            request hiện tại.
-          </li>
-        </ul>
-        <p class="warn">
-          Gợi ý: không để CV pipeline phụ thuộc context để tránh tăng latency.
-        </p>
-      </section>
-
-      <section>
-        <h2>Lỗi thường gặp</h2>
-        <ul>
-          <li>
-            <strong>415 Unsupported Media</strong>: thiếu field
-            <code>image</code> hoặc sai MIME.
-          </li>
-          <li>
-            <strong>503 Models are still loading</strong>: service đang warm-up
-            model.
-          </li>
-          <li>
-            <strong>Auth optional</strong>: không có JWT thì vẫn nhận kết quả
-            CV, chỉ không lưu history.
+            <strong>InferenceClientError (Trong kết quả status: failed)</strong>: Xảy ra khi CV Service không thể liên kết được với AI ngoài (ví dụ: Google Gemini API key bị sai, hết hạn mức sử dụng hoặc lỗi kết nối).
           </li>
         </ul>
       </section>
 
       <section>
-        <h2>Best practices</h2>
+        <h2>Các Best Practices khuyên dùng</h2>
         <ul>
-          <li>Giữ CV service stateless, context xử lý ở backend.</li>
-          <li>Cache profile/survey, tránh gọi DB mỗi request.</li>
-          <li>Log <code>request_id</code> để trace end-to-end.</li>
+          <li><strong>Giữ cổng 8000 đóng phía ngoài mạng (Private Docker Network)</strong>: Chỉ expose cổng 8000 khi cần debug. Lúc đưa lên staging/production, nên ẩn cổng 8000 của CV service và chỉ cho phép C# Backend kết nối thông qua Docker network nội bộ để tăng cường bảo mật.</li>
+          <li><strong>Sử dụng khóa bí mật mạnh</strong>: Hãy luôn tạo mã khóa ngẫu nhiên dài từ 64 ký tự hex ở production để chống lại các cuộc tấn công đoán mã.</li>
         </ul>
       </section>
     </main>
 
     <footer>
-      <p>CV Service Integration Guide - May 2026</p>
+      <p>Tài Liệu Hướng Dẫn Tích Hợp CV Service - 2026</p>
     </footer>
   </body>
 </html>
