@@ -1,180 +1,174 @@
 # Food CV Microservice
 
-Python FastAPI · YOLOv8 · EfficientNet · DepthAnything v2 · Docker
+Python FastAPI · Google Gemini API · Celery · Redis · Docker
 
 ## Overview
 
-This service receives an image, runs a computer-vision pipeline to detect and classify food, estimates portions, and looks up nutrition data.
+This service receives an image, forwards it to an external AI API (like Google Gemini) using Celery async task worker with Redis, and returns structured Vietnamese recipe and nutrition data.
 
-## Project structure
+---
+
+## Project Structure
 
 ```text
 cv-service/
 ├── app/
-│   ├── api/
-│   ├── core/
-│   ├── db/
-│   ├── embeddings/
-│   ├── pipeline/
-│   ├── registry/
-│   ├── schemas/
-│   ├── services/
-│   └── stages/
-├── tests/
-├── weights/
-├── Dockerfile
-├── .dockerignore
-├── requirements.txt
-├── requirements-ml.txt
-└── requirements-dev.txt
+│   ├── api/            # API routers (cv, history, admin)
+│   ├── core/           # Configuration, logging, base schemas
+│   ├── db/             # Database clients (Supabase/PostgREST)
+│   ├── embeddings/     # Text embeddings for meal history search
+│   ├── schemas/        # Pydantic schemas (Pydantic v2)
+│   └── services/       # Core services (worker.py, inference_client.py)
+├── tests/              # Unit and integration tests (pytest)
+├── Dockerfile          # Optimized runtime Dockerfile (slim python)
+├── docker-compose.yml  # Docker environment (FastAPI, Redis, Celery)
+├── requirements.txt    # Core runtime dependencies
+tools
 ```
 
-## Requirements files
+---
 
-The project is split into three dependency groups:
+## Requirements Files
 
-- `requirements.txt` — core runtime dependencies for the API
-- `requirements-ml.txt` — AI / embedding / inference dependencies
-- `requirements-dev.txt` — testing and local development tooling
+The project has two dependency groups:
 
-### Which file should you install?
+- `requirements.txt` — Core runtime dependencies for the API and Celery worker.
 
-- For local development or running the full service, install `requirements.txt` and `requirements-ml.txt`.
-- For test/lint work, additionally install `requirements-dev.txt`.
-- For Docker production builds, the Dockerfile installs `requirements.txt` and `requirements-ml.txt` automatically.
 
-Example installation:
+### Installation
 
+For running the service locally:
 ```bash
 pip install -r requirements.txt
-pip install -r requirements-ml.txt
-pip install -r requirements-dev.txt
 ```
 
-## Quick start
+For development and running tests:
+```bash
+pip install -r requirements.txt
+```
 
-### 1) Create and activate a virtual environment
+---
+
+## Quick Start (Local Development)
+
+### 1) Create and Activate a Virtual Environment
 
 ```bash
 python -m venv .venv
 ```
 
 Windows CMD:
-
 ```bash
 .venv\Scripts\activate
 ```
 
 PowerShell:
-
 ```powershell
 .venv\Scripts\Activate.ps1
 ```
 
-### 2) Install dependencies
-
-For normal running:
-
+Linux/macOS:
 ```bash
-pip install -r requirements.txt
-pip install -r requirements-ml.txt
+source .venv/bin/activate
 ```
 
-For development and tests:
+### 2) Configure Environment
 
-```bash
-pip install -r requirements.txt
-pip install -r requirements-ml.txt
-pip install -r requirements-dev.txt
-```
-
-### 3) Configure environment
-
-Copy `.env.example` to `.env` and adjust values as needed.
-
-Important environment values:
+Copy `.env.example` to `.env` and adjust the values. Key values include:
 
 ```env
-AI_PROVIDER=gemini
-GEMINI_API_KEY=your-gemini-api-key
-GEMINI_MODEL=gemini-2.0-flash
+# --- Server Config ---
+APP_ENV=development
+APP_HOST=0.0.0.0
+APP_PORT=8000
+
+# --- Security ---
+API_SECRET_KEY=your-shared-secret-key  # Key for C# Backend ↔ CV Service auth. Leave empty in DEV to disable auth.
+
+# --- Redis & Celery ---
 REDIS_URL=redis://localhost:6379/0
 ```
 
-### 4) Start Redis
+### 3) Start Redis & Celery Worker
 
-If Redis is needed in your local workflow:
-
+Start Redis using Docker Compose:
 ```bash
 docker compose up -d redis
 ```
 
-### 5) Start API service
- source ../.venv/Scripts/activate
+In a separate terminal, activate the virtual environment and start the Celery worker:
+```bash
+celery -A app.services.worker worker --loglevel=info --queues=cv
+```
 
+### 4) Start API Service
+
+In a separate terminal, activate the virtual environment and start the FastAPI web server:
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-## Docker build
+Access Swagger UI documentation at: `http://localhost:8000/docs`.
 
-Build the production image:
+---
 
-```bash
-docker build -t cv-service .
-```
+## Running with Docker Compose (Recommended)
 
-Run the container:
+To build and run all services (FastAPI, Redis, Celery worker) together in Docker containers:
 
 ```bash
-docker run --rm -p 8000:8000 --env-file .env cv-service
+# Build the containers without cache
+docker compose build --no-cache
+
+# Run the services in the background
+docker compose up -d
 ```
 
-## API endpoints
+---
 
-All routes are versioned under `/api/v1`.
+## API Endpoints
+
+All routes are versioned under `/api/v1`. Authenticated endpoints require `Authorization: Bearer <API_SECRET_KEY>` header.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/cv/health` | Health check + model status |
-| POST | `/api/v1/cv/analyze` | Sync image analysis |
-| POST | `/api/v1/cv/analyze/async` | Queue async analysis job |
-| GET | `/api/v1/cv/jobs/{job_id}` | Poll async job result |
-| POST | `/api/v1/cv/history/query` | Search meal history |
-| GET | `/api/v1/cv/history/me` | Get recent meals |
-| POST | `/api/v1/cv/admin/cache/clear` | Clear nutrition cache |
-| POST | `/api/v1/cv/admin/verified` | Upsert verified nutrition entry |
-| DELETE | `/api/v1/cv/admin/verified/{label}` | Delete verified nutrition entry |
-| GET | `/metrics` | Prometheus metrics |
-| GET | `/docs` | Swagger UI |
+| **GET** | `/api/v1/cv/health` | Health check + model status |
+| **POST** | `/api/v1/cv/analyze` | Queue async image analysis job (returns `job_id`) |
+| **GET** | `/api/v1/cv/jobs/{job_id}` | Poll async job status and retrieve result |
+| **POST** | `/api/v1/cv/history/query` | Search meal history using natural language |
+| **GET** | `/api/v1/cv/history/me` | Get recent meal logs for the current user |
+| **POST** | `/api/v1/cv/admin/cache/clear` | Clear nutrition cache (admin) |
+| **POST** | `/api/v1/cv/admin/verified` | Upsert verified nutrition entry (admin) |
+| **DELETE** | `/api/v1/cv/admin/verified/{label}` | Delete verified nutrition entry (admin) |
+| **GET** | `/metrics` | Prometheus metrics |
 
-## Database connection
+---
 
-The service now uses a deployed database server instead of Supabase SDK.
+## Database Connection
 
-Set one of the following:
+The service connects directly to a database server. Configure one of the following in `.env`:
 
 ```env
 DATABASE_URL=http://localhost:3000
 ```
 
-Or separate read/write endpoints:
-
+Or separate endpoints for read/write:
 ```env
 DATABASE_READ_URL=http://localhost:3000
 DATABASE_WRITE_URL=http://localhost:3001
 ```
 
-## Model weights
+---
 
-- `weights/yolov8_food.pt` — YOLO detector
-- `weights/efficientnet_food.pt` — EfficientNet classifier
-- `DepthAnything-V2-Small` is downloaded automatically on first run
+## Running Tests
 
-## Running tests
+Verify API routes and mocked inference clients locally:
 
 ```bash
+# Windows
+$env:PYTHONPATH="."
 pytest tests/ -v
-```
 
-If you need the development tooling first, install `requirements-dev.txt`.
+# Linux/macOS
+PYTHONPATH=. pytest tests/ -v
+```
