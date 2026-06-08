@@ -93,11 +93,21 @@ def mock_worker():
 
 # ── Health endpoint ─────────────────────────────────────────
 def test_health_ok(client):
-    r = client.get("/api/v1/cv/health", headers={"Authorization": "Bearer test-key"})
-    assert r.status_code == 200
-    data = r.json()
-    assert data["status"] == "ok"
-    assert data["models_loaded"] is True
+    class MockRedis:
+        @classmethod
+        def from_url(cls, *args, **kwargs):
+            return cls()
+        async def ping(self):
+            return True
+        async def close(self):
+            pass
+
+    with patch("redis.asyncio.Redis.from_url", MockRedis.from_url):
+        r = client.get("/api/v1/cv/health")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "ok"
+        assert data["models_loaded"] is True
 
 
 # ── Auth guard ──────────────────────────────────────────────

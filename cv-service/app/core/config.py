@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     device: str = "cpu"
 
     # Image validation
-    max_image_size_mb: int = 10
+    max_image_size_mb: int = 25
     allowed_mime_types: List[str] = ["image/jpeg", "image/png", "image/webp"]
 
     # Nutrition API
@@ -31,8 +31,7 @@ class Settings(BaseSettings):
     ai_provider: str = "mock"
     # Gemini API configuration
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.0-flash"
-
+    gemini_model: str = "gemini-2.5-flash"
 
     # PostgREST + vector semantic search
     postgrest_url: str = ""

@@ -12,10 +12,32 @@ router = APIRouter(prefix="/cv", tags=["Computer Vision"])
 
 
 @router.get("/health", response_model=HealthResponse)
-async def health(_: None = Depends(require_api_key)):
+async def health():
+    # 1. Check AI Provider configuration readiness
+    ai_configured = False
+    if settings.ai_provider == "mock":
+        ai_configured = True
+    elif settings.ai_provider == "gemini":
+        ai_configured = bool(settings.gemini_api_key)
+    elif settings.ai_provider == "remote_api":
+        ai_configured = bool(settings.ai_api_base_url and settings.ai_api_key)
+
+    # 2. Check Redis connection health (critical for Celery job queues)
+    redis_ok = True
+    try:
+        from redis.asyncio import Redis
+        r = Redis.from_url(settings.redis_url, socket_connect_timeout=2)
+        await r.ping()
+        await r.close()
+    except Exception as exc:
+        logger.error("health_check_redis_failed", error=str(exc))
+        redis_ok = False
+
+    status_str = "ok" if (redis_ok and ai_configured) else "unhealthy"
+
     return HealthResponse(
-        status="ok",
-        models_loaded=True,
+        status=status_str,
+        models_loaded=ai_configured,
         device=settings.device,
     )
 
