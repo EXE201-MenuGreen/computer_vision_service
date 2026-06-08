@@ -35,6 +35,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Runtime libraries needed by image processing and container health checks.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
 
 
 # Copy the virtual environment from the builder stage.
