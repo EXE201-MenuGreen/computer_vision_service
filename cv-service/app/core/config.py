@@ -27,11 +27,15 @@ class Settings(BaseSettings):
     ai_api_timeout_seconds: float = 30.0
     ai_api_poll_interval_seconds: float = 1.5
 
-    # AI provider configuration (remote_api | gemini | mock)
-    ai_provider: str = "mock"
+    # AI provider configuration (remote_api | gemini)
+    ai_provider: str = "gemini"
     # Gemini API configuration
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
+    gemini_temperature: float = 0.9
+    gemini_top_p: float = 0.95
+    gemini_min_dish_suggestions: int = 3
+    gemini_max_dish_suggestions: int = 5
 
     # PostgREST + vector semantic search
     postgrest_url: str = ""
@@ -54,6 +58,7 @@ class Settings(BaseSettings):
     # Nutrition cache
     nutrition_cache_ttl: int = 86400          # seconds — Redis TTL for nutrition entries
     usda_name_match_threshold: float = 0.35   # min SequenceMatcher ratio OR word overlap to accept USDA result
+    nutrition_enrichment_enabled: bool = True # normalize labels + attach nutrition_breakdown after AI inference
 
     # Security
     api_secret_key: str = ""                  # backend → AI service bearer token
@@ -68,14 +73,16 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def require_secrets_in_production(self) -> "Settings":
         if self.app_env == "production":
-            missing = [
-                k
-                for k, v in {
-                    "USDA_API_KEY": self.usda_api_key,
-                    "API_SECRET_KEY": self.api_secret_key,
-                }.items()
-                if not v
-            ]
+            required = {
+                "USDA_API_KEY": self.usda_api_key,
+                "API_SECRET_KEY": self.api_secret_key,
+            }
+            if self.ai_provider == "gemini":
+                required["GEMINI_API_KEY"] = self.gemini_api_key
+            elif self.ai_provider == "remote_api":
+                required["AI_API_KEY"] = self.ai_api_key
+                required["AI_API_BASE_URL"] = self.ai_api_base_url
+            missing = [k for k, v in required.items() if not v]
             if missing:
                 raise ValueError(f"Required env vars not set: {', '.join(missing)}")
         return self

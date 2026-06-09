@@ -35,20 +35,36 @@ celery_app.conf.update(
 
 
 @celery_app.task(bind=True, name="cv.analyze_image", max_retries=2)
-def analyze_image_task(self, image_bytes_hex: str, filename: str, content_type: str) -> dict[str, Any]:
+def analyze_image_task(
+    self,
+    image_bytes_hex: str,
+    filename: str,
+    content_type: str,
+    user_context_json: str = "{}",
+) -> dict[str, Any]:
     """
     Celery task: receives image bytes (hex-encoded), forwards to the external AI API.
     Returns the parsed JSON response.
     """
+    import json
+
+    from app.schemas.cv_schemas import UserAnalysisContext
     from app.services.inference_client import analyze_image
+    from app.services.response_enricher import enrich_ai_response
 
     image_bytes = binascii.unhexlify(image_bytes_hex)
+    try:
+        ctx_data = json.loads(user_context_json) if user_context_json else {}
+        user_context = UserAnalysisContext(**ctx_data) if ctx_data else None
+    except (json.JSONDecodeError, TypeError, ValueError):
+        user_context = None
 
     loop = asyncio.new_event_loop()
     try:
         result = loop.run_until_complete(
-            analyze_image(image_bytes, filename, content_type)
+            analyze_image(image_bytes, filename, content_type, user_context)
         )
+        result = loop.run_until_complete(enrich_ai_response(result))
         return result
     except Exception as exc:
         logger.error("celery_task_failed", error=str(exc), task_id=self.request.id)
@@ -57,10 +73,15 @@ def analyze_image_task(self, image_bytes_hex: str, filename: str, content_type: 
         loop.close()
 
 
-def enqueue_inference_job(image_bytes: bytes, filename: str, content_type: str) -> str:
+def enqueue_inference_job(
+    image_bytes: bytes,
+    filename: str,
+    content_type: str,
+    user_context_json: str = "{}",
+) -> str:
     """Create a background job for remote AI inference and return the job id."""
     image_bytes_hex = binascii.hexlify(image_bytes).decode("utf-8")
-    task = analyze_image_task.delay(image_bytes_hex, filename, content_type)
+    task = analyze_image_task.delay(image_bytes_hex, filename, content_type, user_context_json)
     return task.id
 
 

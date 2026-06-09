@@ -52,6 +52,14 @@ class AnalysisResult(BaseModel):
     processing_time_ms: float
 
 
+# ── Analyze request context (personalization) ───────────────
+class UserAnalysisContext(BaseModel):
+    user_id: Optional[str] = None
+    dietary_preferences: List[str] = Field(default_factory=list)
+    avoid_foods: List[str] = Field(default_factory=list)
+    recent_dishes: List[str] = Field(default_factory=list)
+
+
 # ── AI API response payload ────────────────────────────────
 class IngredientItem(BaseModel):
     id_nguyen_lieu: str
@@ -95,6 +103,9 @@ class AIInferenceResponse(BaseModel):
     luong_tin_cay_chung: Optional[str] = None
     nguyen_lieu_tho_quet_duoc: Optional[List[IngredientItem]] = None
     danh_sach_mon_an_goi_y: Optional[List[SuggestedDish]] = None
+    mon_an_goi_y_chon: Optional[SuggestedDish] = None
+    nutrition_breakdown: Optional[List[FoodNutrition]] = None
+    total_macros: Optional[MacroNutrients] = None
     error_code: Optional[str] = None
     error_message: Optional[str] = None
 

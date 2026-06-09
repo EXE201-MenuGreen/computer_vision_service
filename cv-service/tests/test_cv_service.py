@@ -5,7 +5,7 @@ Run: pytest tests/test_cv_service.py -v
 from __future__ import annotations
 
 import io
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -87,7 +87,7 @@ def mock_api_response():
 
 @pytest.fixture
 def mock_worker():
-    with patch("app.services.worker.enqueue_inference_job", return_value="job_123"):
+    with patch("app.api.cv_router.enqueue_inference_job", return_value="job_123"):
         yield
 
 
@@ -102,7 +102,9 @@ def test_health_ok(client):
         async def close(self):
             pass
 
-    with patch("redis.asyncio.Redis.from_url", MockRedis.from_url):
+    with patch("redis.asyncio.Redis.from_url", MockRedis.from_url), \
+         patch("app.api.cv_router.settings.ai_provider", "gemini"), \
+         patch("app.api.cv_router.settings.gemini_api_key", "test-gemini-key"):
         r = client.get("/api/v1/cv/health")
         assert r.status_code == 200
         data = r.json()
@@ -134,7 +136,7 @@ def test_analyze_returns_job_id(client, fake_rgb_image, mock_worker):
 
 # ── Job polling ─────────────────────────────────────────────
 def test_job_poll_processing(client):
-    with patch("app.services.worker.get_job_result", return_value=None):
+    with patch("app.api.cv_router.get_job_result", return_value=None):
         r = client.get(
             "/api/v1/cv/jobs/job_123",
             headers={"Authorization": "Bearer test-key"},
@@ -144,7 +146,7 @@ def test_job_poll_processing(client):
 
 
 def test_job_poll_done(client, mock_api_response):
-    with patch("app.services.worker.get_job_result", return_value={"status": "done", "result": mock_api_response}):
+    with patch("app.api.cv_router.get_job_result", return_value={"status": "done", "result": mock_api_response}):
         r = client.get(
             "/api/v1/cv/jobs/job_123",
             headers={"Authorization": "Bearer test-key"},
@@ -182,7 +184,7 @@ async def test_inference_client_sends_bearer_and_parses_json():
         async def __aexit__(self, exc_type, exc, tb):
             return False
 
-        async def post(self, url, files=None):
+        async def post(self, url, files=None, data=None):
             self.captured_files = files
             return FakeResp()
 
@@ -190,7 +192,7 @@ async def test_inference_client_sends_bearer_and_parses_json():
          patch("app.services.inference_client.settings.ai_api_base_url", "http://ai-api"), \
          patch("app.services.inference_client.settings.ai_api_key", "secret"), \
          patch("httpx.AsyncClient", FakeClient):
-        result = await analyze_image(b"abc", "food.jpg", "image/jpeg")
+        result = await analyze_image(b"abc", "food.jpg", "image/jpeg", None)
 
     assert result["job_id"] == "job_1"
     assert result["status"] == "done"
@@ -223,6 +225,8 @@ async def test_inference_client_via_gemini():
             }
 
     class FakeClient:
+        captured_payload = None
+
         def __init__(self, *args, **kwargs):
             pass
 
@@ -233,15 +237,22 @@ async def test_inference_client_via_gemini():
             return False
 
         async def post(self, url, json=None):
+            FakeClient.captured_payload = json
             return FakeResp()
 
     with patch("app.services.inference_client.settings.ai_provider", "gemini"), \
          patch("app.services.inference_client.settings.gemini_api_key", "secret-key"), \
          patch("app.services.inference_client.settings.gemini_model", "gemini-2.0-flash"), \
+         patch("app.services.inference_client.settings.gemini_temperature", 0.9), \
+         patch("app.services.inference_client.settings.gemini_top_p", 0.95), \
          patch("httpx.AsyncClient", FakeClient):
-        result = await analyze_image(b"abc", "food.jpg", "image/jpeg")
+        from app.schemas.cv_schemas import UserAnalysisContext
+        ctx = UserAnalysisContext(user_id="u1", dietary_preferences=["high_protein"])
+        result = await analyze_image(b"abc", "food.jpg", "image/jpeg", ctx)
 
     assert result["job_id"] == "job_gemini"
+    assert FakeClient.captured_payload["generationConfig"]["temperature"] == 0.9
+    assert "high_protein" in FakeClient.captured_payload["contents"][0]["parts"][0]["text"]
     assert result["status"] == "done"
 
 

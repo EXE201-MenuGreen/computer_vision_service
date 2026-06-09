@@ -62,4 +62,6 @@ logs/
 data/
 
 # ── Test images (tuỳ chọn) ──────────────────────────────────
+.tests/
+tests/
 test_food.jpg
