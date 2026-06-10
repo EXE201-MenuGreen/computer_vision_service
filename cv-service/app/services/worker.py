@@ -64,7 +64,7 @@ def analyze_image_task(
         result = loop.run_until_complete(
             analyze_image(image_bytes, filename, content_type, user_context)
         )
-        result = loop.run_until_complete(enrich_ai_response(result))
+        result = loop.run_until_complete(enrich_ai_response(result, user_context))
         return result
     except Exception as exc:
         logger.error("celery_task_failed", error=str(exc), task_id=self.request.id)

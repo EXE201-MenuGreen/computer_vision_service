@@ -37,12 +37,53 @@ async def build_user_analysis_context(
     if user_id and settings.meal_history_enabled and not recent:
         recent = await _load_recent_food_labels(user_id)
 
+    profile_fields = await _load_user_profile_fields(user_id)
+
+    merged_prefs = list(prefs)
+    if profile_fields.get("dietary_goal") and profile_fields["dietary_goal"] not in merged_prefs:
+        merged_prefs.append(profile_fields["dietary_goal"])
+
+    merged_avoid_keys = list(profile_fields.get("avoid_ingredient_keys") or [])
+    from app.services.allergen_checker import resolve_avoid_keys_from_names
+
+    for key in resolve_avoid_keys_from_names(avoid):
+        if key not in merged_avoid_keys:
+            merged_avoid_keys.append(key)
+
     return UserAnalysisContext(
         user_id=user_id,
-        dietary_preferences=prefs,
+        dietary_preferences=merged_prefs,
         avoid_foods=avoid,
         recent_dishes=recent,
+        allergies=profile_fields.get("allergies") or [],
+        allergy_keys=profile_fields.get("allergy_keys") or [],
+        health_conditions=profile_fields.get("health_conditions") or [],
+        health_condition_keys=profile_fields.get("health_condition_keys") or [],
+        dietary_goal=profile_fields.get("dietary_goal"),
+        avoid_ingredient_keys=merged_avoid_keys,
+        daily_calorie_limit=profile_fields.get("daily_calorie_limit"),
     )
+
+
+async def _load_user_profile_fields(user_id: Optional[str]) -> dict:
+    if not user_id or not settings.user_profile_enabled:
+        return {}
+
+    from app.db.user_profile import get_user_cv_profile
+
+    profile = await get_user_cv_profile(user_id)
+    if profile is None:
+        return {}
+
+    return {
+        "allergies": profile.allergy_names,
+        "allergy_keys": profile.allergy_keys,
+        "health_conditions": profile.health_condition_names,
+        "health_condition_keys": [c.condition_key for c in profile.health_conditions],
+        "dietary_goal": profile.dietary_goal,
+        "avoid_ingredient_keys": profile.avoid_ingredient_keys,
+        "daily_calorie_limit": profile.daily_calorie_limit,
+    }
 
 
 async def _load_recent_food_labels(user_id: str) -> List[str]:

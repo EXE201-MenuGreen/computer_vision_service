@@ -8,7 +8,8 @@ from typing import Any, Dict, List, Optional
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.schemas.cv_schemas import BoundingBox, DetectedFood, MacroNutrients
+from app.schemas.cv_schemas import BoundingBox, DetectedFood, MacroNutrients, UserAnalysisContext
+from app.services.allergen_checker import annotate_dishes_safety, pick_random_safe_dish
 from app.services.food_labels import normalize_ingredient
 
 logger = get_logger(__name__)
@@ -130,13 +131,10 @@ async def _enrich_dish_nutrition(dishes: List[Dict[str, Any]]) -> List[Dict[str,
     return enriched
 
 
-def _pick_random_dish(dishes: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    if not dishes:
-        return None
-    return random.choice(dishes)
-
-
-async def enrich_ai_response(payload: Dict[str, Any]) -> Dict[str, Any]:
+async def enrich_ai_response(
+    payload: Dict[str, Any],
+    user_context: Optional[UserAnalysisContext] = None,
+) -> Dict[str, Any]:
     """
     Normalize ingredient/dish labels and attach catalog-based nutrition data.
 
@@ -164,8 +162,10 @@ async def enrich_ai_response(payload: Dict[str, Any]) -> Dict[str, Any]:
         dishes = _normalize_dishes(dishes)
         if settings.nutrition_enrichment_enabled:
             dishes = await _enrich_dish_nutrition(dishes)
+        if user_context is not None:
+            dishes = annotate_dishes_safety(dishes, user_context)
         result["danh_sach_mon_an_goi_y"] = dishes
-        chosen = _pick_random_dish(dishes)
+        chosen = pick_random_safe_dish(dishes) if user_context else random.choice(dishes) if dishes else None
         if chosen is not None:
             result["mon_an_goi_y_chon"] = chosen
 

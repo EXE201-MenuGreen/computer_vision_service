@@ -58,6 +58,13 @@ class UserAnalysisContext(BaseModel):
     dietary_preferences: List[str] = Field(default_factory=list)
     avoid_foods: List[str] = Field(default_factory=list)
     recent_dishes: List[str] = Field(default_factory=list)
+    allergies: List[str] = Field(default_factory=list, description="Display names, e.g. Hải sản")
+    allergy_keys: List[str] = Field(default_factory=list, description="allergen_key from backend DB")
+    health_conditions: List[str] = Field(default_factory=list, description="Display names")
+    health_condition_keys: List[str] = Field(default_factory=list)
+    dietary_goal: Optional[str] = None
+    avoid_ingredient_keys: List[str] = Field(default_factory=list)
+    daily_calorie_limit: Optional[float] = None
 
 
 # ── AI API response payload ────────────────────────────────
@@ -92,6 +99,9 @@ class SuggestedDish(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     nguyen_lieu_su_dung: List[RecipeIngredient]
     thong_tin_dinh_duong_mon_an: NutritionInfo
+    an_toan_cho_user: Optional[bool] = None
+    dich_ung_trung: Optional[List[str]] = Field(default_factory=list)
+    canh_bao_suc_khoe: Optional[List[str]] = Field(default_factory=list)
 
 
 class AIInferenceResponse(BaseModel):

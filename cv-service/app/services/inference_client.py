@@ -40,14 +40,42 @@ def _build_personalization_block(context: Optional[UserAnalysisContext]) -> str:
         lines.append(
             f"- Recent meals/ingredients this user already had (suggest DIFFERENT dishes): {recent}"
         )
+    if context.allergies:
+        lines.append(
+            f"- Food allergies (NEVER use these allergens in any suggested dish): "
+            f"{', '.join(context.allergies)}"
+        )
+    if context.health_conditions:
+        lines.append(
+            f"- Health conditions (avoid ingredients harmful for these): "
+            f"{', '.join(context.health_conditions)}"
+        )
+    if context.dietary_goal:
+        lines.append(f"- Dietary goal: {context.dietary_goal}")
+    if context.avoid_ingredient_keys:
+        lines.append(
+            f"- Restricted ingredient keys: {', '.join(context.avoid_ingredient_keys)}"
+        )
+    if context.daily_calorie_limit:
+        lines.append(
+            f"- Daily calorie limit: {context.daily_calorie_limit} kcal — prefer lighter options when suitable"
+        )
 
     if not lines:
         return ""
+
+    safety_note = ""
+    if context.allergies or context.health_conditions:
+        safety_note = (
+            "\n- CRITICAL: Every suggested dish must be safe for this user. "
+            "Do not include allergic or health-restricted ingredients."
+        )
 
     return (
         "\n\nPersonalization context (tailor suggestions accordingly):\n"
         + "\n".join(lines)
         + "\n- Prefer creative variety; do not repeat recent meals when alternatives exist."
+        + safety_note
     )
 
 

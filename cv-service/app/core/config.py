@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     # Auth + meal history (Option 3)
     meal_history_enabled: bool = True
     meal_history_similarity_threshold: float = 0.3
+    user_profile_enabled: bool = True
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
@@ -58,6 +59,8 @@ class Settings(BaseSettings):
     # Nutrition cache
     nutrition_cache_ttl: int = 86400          # seconds — Redis TTL for nutrition entries
     usda_name_match_threshold: float = 0.35   # min SequenceMatcher ratio OR word overlap to accept USDA result
+    usda_max_retries: int = 3                 # retries after HTTP 429 from FoodData Central
+    usda_retry_backoff_seconds: float = 2.0   # base delay; doubled each retry (exponential backoff)
     nutrition_enrichment_enabled: bool = True # normalize labels + attach nutrition_breakdown after AI inference
 
     # Security

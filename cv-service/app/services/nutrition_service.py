@@ -129,6 +129,63 @@ def _macros_from_cache_dict(data: dict) -> _LookupResult:
     )
 
 
+def _usda_retry_delay_seconds(response: httpx.Response, attempt: int) -> float:
+    retry_after = response.headers.get("Retry-After")
+    if retry_after:
+        try:
+            return max(float(retry_after), 0.0)
+        except ValueError:
+            pass
+    return settings.usda_retry_backoff_seconds * (2 ** attempt)
+
+
+async def _usda_search_foods(
+    client: httpx.AsyncClient,
+    search_text: str,
+    *,
+    label: str,
+) -> Optional[list[dict]]:
+    """
+    Call USDA /foods/search with retry on HTTP 429 (Too Many Requests).
+    Returns the foods list on success, or None when rate-limited / exhausted retries.
+    """
+    url = f"{settings.usda_base_url}/foods/search"
+    params = {
+        "query": search_text,
+        "api_key": settings.usda_api_key,
+        "pageSize": 1,
+        "dataType": "Foundation,SR Legacy",
+    }
+    max_retries = settings.usda_max_retries
+
+    for attempt in range(max_retries + 1):
+        resp = await client.get(url, params=params)
+
+        if resp.status_code == 429:
+            if attempt >= max_retries:
+                logger.warning(
+                    "nutrition_usda_rate_limited",
+                    label=label,
+                    attempts=attempt + 1,
+                )
+                return None
+
+            delay = _usda_retry_delay_seconds(resp, attempt)
+            logger.info(
+                "nutrition_usda_retry",
+                label=label,
+                attempt=attempt + 1,
+                wait_seconds=delay,
+            )
+            await asyncio.sleep(delay)
+            continue
+
+        resp.raise_for_status()
+        return resp.json().get("foods", [])
+
+    return None
+
+
 class NutritionService:
 
     async def _fetch_nutrition(self, query: str) -> _LookupResult:
@@ -168,17 +225,7 @@ class NutritionService:
         # ── Tier 3: USDA FoodData Central ────────────────────────────────────
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                resp = await client.get(
-                    f"{settings.usda_base_url}/foods/search",
-                    params={
-                        "query": search_text,
-                        "api_key": settings.usda_api_key,
-                        "pageSize": 1,
-                        "dataType": "Foundation,SR Legacy",
-                    },
-                )
-                resp.raise_for_status()
-                foods = resp.json().get("foods", [])
+                foods = await _usda_search_foods(client, search_text, label=canonical)
 
                 if foods:
                     food = foods[0]

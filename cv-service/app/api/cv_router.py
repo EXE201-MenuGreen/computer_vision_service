@@ -16,13 +16,18 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/cv", tags=["Computer Vision"])
 
 
+def _is_ai_configured() -> bool:
+    provider = settings.ai_provider.lower()
+    if provider == "gemini":
+        return bool(settings.gemini_api_key)
+    if provider == "remote_api":
+        return bool(settings.ai_api_base_url and settings.ai_api_key)
+    return False
+
+
 @router.get("/health", response_model=HealthResponse)
 async def health():
-    ai_configured = False
-    if settings.ai_provider == "gemini":
-        ai_configured = bool(settings.gemini_api_key)
-    elif settings.ai_provider == "remote_api":
-        ai_configured = bool(settings.ai_api_base_url and settings.ai_api_key)
+    ai_configured = _is_ai_configured()
 
     redis_ok = True
     try:
