@@ -61,7 +61,4 @@ logs/
 # ── Training data (khong commit dataset) ────────────────────
 data/
 
-# ── Test images (tuỳ chọn) ──────────────────────────────────
-.tests/
-tests/
-test_food.jpg
+
