@@ -1,6 +1,22 @@
 from pydantic_settings import BaseSettings
 from pydantic import field_validator, model_validator
 from typing import List
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+
+def ensure_rediss_ssl_cert_reqs(redis_url: str) -> str:
+    if not redis_url.startswith("rediss://"):
+        return redis_url
+
+    parts = urlsplit(redis_url)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    if "ssl_cert_reqs" in query:
+        return redis_url
+
+    query["ssl_cert_reqs"] = "CERT_REQUIRED"
+    return urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
+    )
 
 
 class Settings(BaseSettings):
@@ -55,6 +71,8 @@ class Settings(BaseSettings):
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
+    upstash_redis_rest_url: str = ""
+    upstash_redis_rest_token: str = ""
 
     # Nutrition cache
     nutrition_cache_ttl: int = 86400          # seconds — Redis TTL for nutrition entries
@@ -75,6 +93,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def require_secrets_in_production(self) -> "Settings":
+        if (
+            self.redis_url == "redis://localhost:6379/0"
+            and self.upstash_redis_rest_url.startswith(("redis://", "rediss://"))
+        ):
+            self.redis_url = self.upstash_redis_rest_url
+
         if self.app_env == "production":
             required = {
                 "USDA_API_KEY": self.usda_api_key,
@@ -96,6 +120,11 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [i.strip() for i in v.split(",")]
         return v
+
+    @field_validator("redis_url", "upstash_redis_rest_url", mode="after")
+    @classmethod
+    def normalize_redis_url(cls, v: str) -> str:
+        return ensure_rediss_ssl_cert_reqs(v) if isinstance(v, str) else v
 
     @property
     def max_image_size_bytes(self) -> int:

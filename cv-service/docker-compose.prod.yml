@@ -1,49 +1,30 @@
 services:
-  cv-service:
+  ai-api:
     build:
       context: .
       dockerfile: Dockerfile
-    image: cv-service:prod
-    container_name: cv-service
+    image: ${REGISTRY_NAME:-local}.azurecr.io/ai-api:latest
+    container_name: ai-api-service
     env_file: .env
     environment:
       APP_ENV: production
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: ${REDIS_URL:?Set REDIS_URL to your Upstash rediss URL with ssl_cert_reqs=CERT_REQUIRED}
+      UPSTASH_REDIS_REST_URL: ${REDIS_URL:?Set REDIS_URL to your Upstash rediss URL with ssl_cert_reqs=CERT_REQUIRED}
+      CONTAINER_ROLE: api
     ports:
       - "8000:8000"
-    depends_on:
-      redis:
-        condition: service_healthy
     restart: unless-stopped
 
-  celery-worker:
+  ai-worker:
     build:
       context: .
       dockerfile: Dockerfile
-    image: cv-service:prod
-    container_name: celery-worker
+    image: ${REGISTRY_NAME:-local}.azurecr.io/ai-api:latest
+    container_name: ai-worker-service
     env_file: .env
     environment:
       APP_ENV: production
-      REDIS_URL: redis://redis:6379/0
-    command: >
-      celery -A app.services.worker worker
-      --loglevel=info
-      --concurrency=1
-      --queues=cv
-    depends_on:
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    container_name: cv-redis
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
+      REDIS_URL: ${REDIS_URL:?Set REDIS_URL to your Upstash rediss URL with ssl_cert_reqs=CERT_REQUIRED}
+      UPSTASH_REDIS_REST_URL: ${REDIS_URL:?Set REDIS_URL to your Upstash rediss URL with ssl_cert_reqs=CERT_REQUIRED}
+      CONTAINER_ROLE: worker
     restart: unless-stopped

@@ -13,6 +13,10 @@ services:
       dockerfile: Dockerfile
     container_name: cv-service
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      UPSTASH_REDIS_REST_URL: redis://redis:6379/0
+      CONTAINER_ROLE: api
     ports:
       - "8000:8000" # host:container — backend goi http://cv-service:8000
 
@@ -38,6 +42,10 @@ services:
       dockerfile: Dockerfile
     container_name: celery-worker
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      UPSTASH_REDIS_REST_URL: redis://redis:6379/0
+      CONTAINER_ROLE: worker
     command: >
       celery -A app.services.worker worker
       --loglevel=info
@@ -72,7 +80,10 @@ services:
     image: mher/flower:2.0
     container_name: cv-flower
     env_file: .env
-    command: celery flower --broker=${REDIS_URL} --port=5555
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      UPSTASH_REDIS_REST_URL: redis://redis:6379/0
+    command: celery flower --broker=redis://redis:6379/0 --port=5555
     ports:
       - "5555:5555"
     depends_on:
