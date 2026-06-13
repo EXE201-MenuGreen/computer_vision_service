@@ -71,6 +71,13 @@ jobs:
           imageToDeploy: ${{ env.REGISTRY_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           targetPort: 8000
 
+      - name: Configure API runtime role
+        run: |
+          az containerapp update \
+            --name ai-api-service \
+            --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --set-env-vars CONTAINER_ROLE=api
+
   deploy-worker:
     name: Deploy worker
     runs-on: ubuntu-latest
@@ -95,5 +102,6 @@ jobs:
           az containerapp update \
             --name ai-worker-service \
             --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --set-env-vars CONTAINER_ROLE=worker \
             --command celery \
             --args "-A" "app.services.worker" "worker" "--loglevel=info" "--concurrency=1" "--queues=cv"
