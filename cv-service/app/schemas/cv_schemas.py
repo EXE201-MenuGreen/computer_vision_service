@@ -138,6 +138,9 @@ class JobStatusResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     models_loaded: bool
+    redis: bool
+    worker: bool
+    gemini_configured: bool
     device: str
     version: str = "1.0.0"
 

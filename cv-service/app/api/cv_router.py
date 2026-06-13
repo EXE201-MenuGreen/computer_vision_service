@@ -1,4 +1,5 @@
 import io
+import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, UploadFile, File, Form, Depends
@@ -8,7 +9,7 @@ from app.api.auth import require_api_key
 from app.schemas.cv_schemas import JobResponse, JobStatusResponse, HealthResponse, AIInferenceResponse
 from app.services.image_validator import validate_and_load_image
 from app.services.response_enricher import enrich_ai_response
-from app.services.worker import enqueue_inference_job, get_job_result
+from app.services.worker import celery_app, enqueue_inference_job, get_job_result
 from app.core.config import settings
 from app.core.logging import get_logger
 
@@ -25,9 +26,23 @@ def _is_ai_configured() -> bool:
     return False
 
 
+def _is_gemini_configured() -> bool:
+    return bool(settings.gemini_api_key)
+
+
+def _ping_celery_workers() -> bool:
+    try:
+        responses = celery_app.control.inspect(timeout=1).ping()
+        return bool(responses)
+    except Exception as exc:
+        logger.error("health_check_worker_failed", error=str(exc))
+        return False
+
+
 @router.get("/health", response_model=HealthResponse)
 async def health():
     ai_configured = _is_ai_configured()
+    gemini_configured = _is_gemini_configured()
 
     redis_ok = True
     try:
@@ -39,11 +54,15 @@ async def health():
         logger.error("health_check_redis_failed", error=str(exc))
         redis_ok = False
 
-    status_str = "ok" if (redis_ok and ai_configured) else "unhealthy"
+    worker_ok = await asyncio.to_thread(_ping_celery_workers) if redis_ok else False
+    status_str = "ok" if (redis_ok and worker_ok and ai_configured) else "unhealthy"
 
     return HealthResponse(
         status=status_str,
         models_loaded=ai_configured,
+        redis=redis_ok,
+        worker=worker_ok,
+        gemini_configured=gemini_configured,
         device=settings.device,
     )
 

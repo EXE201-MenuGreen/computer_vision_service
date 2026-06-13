@@ -103,6 +103,7 @@ def test_health_ok(client):
             pass
 
     with patch("redis.asyncio.Redis.from_url", MockRedis.from_url), \
+         patch("app.api.cv_router._ping_celery_workers", return_value=True), \
          patch("app.api.cv_router.settings.ai_provider", "gemini"), \
          patch("app.api.cv_router.settings.gemini_api_key", "test-gemini-key"):
         r = client.get("/api/v1/cv/health")
@@ -110,6 +111,37 @@ def test_health_ok(client):
         data = r.json()
         assert data["status"] == "ok"
         assert data["models_loaded"] is True
+        assert data["redis"] is True
+        assert data["worker"] is True
+        assert data["gemini_configured"] is True
+
+
+def test_health_unhealthy_when_worker_offline(client):
+    class MockRedis:
+        @classmethod
+        def from_url(cls, *args, **kwargs):
+            return cls()
+        async def ping(self):
+            return True
+        async def close(self):
+            pass
+
+    with patch("redis.asyncio.Redis.from_url", MockRedis.from_url), \
+         patch("app.api.cv_router._ping_celery_workers", return_value=False), \
+         patch("app.api.cv_router.settings.ai_provider", "gemini"), \
+         patch("app.api.cv_router.settings.gemini_api_key", "test-gemini-key"):
+        r = client.get("/api/v1/cv/health")
+        assert r.status_code == 200
+        data = r.json()
+        assert data == {
+            "status": "unhealthy",
+            "models_loaded": True,
+            "redis": True,
+            "worker": False,
+            "gemini_configured": True,
+            "device": "cpu",
+            "version": "1.0.0",
+        }
 
 
 # ── Auth guard ──────────────────────────────────────────────
