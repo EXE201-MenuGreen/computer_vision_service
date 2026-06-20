@@ -1,0 +1,13 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.12",
+  "include": ["cv-service/app", "cv-service/tests"],
+  "extraPaths": ["cv-service"],
+  "executionEnvironments": [
+    {
+      "root": "cv-service",
+      "extraPaths": ["cv-service"]
+    }
+  ]
+}

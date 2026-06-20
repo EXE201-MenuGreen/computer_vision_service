@@ -2,5 +2,12 @@
   "venvPath": "..",
   "venv": ".venv",
   "pythonVersion": "3.12",
-  "include": ["app", "tests"]
+  "include": ["app", "tests"],
+  "extraPaths": ["."],
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "extraPaths": ["."]
+    }
+  ]
 }
