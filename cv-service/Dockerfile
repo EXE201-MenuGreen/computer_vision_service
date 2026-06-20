@@ -70,7 +70,7 @@ USER cvuser
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import os, sys, urllib.request; cmd=open('/proc/1/cmdline','rb').read().decode('utf-8','ignore'); role=os.getenv('CONTAINER_ROLE','api').lower(); sys.exit(0) if role == 'worker' or 'celery' in cmd else urllib.request.urlopen(f'http://127.0.0.1:{os.getenv(\"APP_PORT\", \"8000\")}/api/v1/cv/health', timeout=5).read()"
+    CMD python -c "import os, sys, urllib.request; cmd=open('/proc/1/cmdline','rb').read().decode('utf-8','ignore'); role=os.getenv('CONTAINER_ROLE','api').lower(); sys.exit(0) if role == 'worker' or 'celery' in cmd else urllib.request.urlopen(f'http://127.0.0.1:{os.getenv(\"APP_PORT\", \"8000\")}/api/v1/cv/health/live', timeout=5).read()"
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["api"]

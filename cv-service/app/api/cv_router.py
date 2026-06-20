@@ -67,6 +67,12 @@ async def health():
     )
 
 
+@router.get("/health/live")
+async def health_live():
+    """Lightweight process liveness check. Does not touch Redis or Celery."""
+    return {"status": "ok"}
+
+
 @router.post("/analyze", response_model=JobResponse)
 async def analyze_async(
     image: UploadFile = File(...),
