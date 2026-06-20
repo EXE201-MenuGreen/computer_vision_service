@@ -10,6 +10,9 @@ async def require_api_key(authorization: str = Header(default="", alias="Authori
     """
     Validate Authorization: Bearer <key> for requests coming from backend.
     """
+    if not settings.auth_enabled:
+        return
+
     if not settings.api_secret_key:
         if settings.is_production:
             raise HTTPException(

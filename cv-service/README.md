@@ -34,15 +34,16 @@ The project has two dependency groups:
 
 - `requirements.txt` — Core runtime dependencies for the API and Celery worker.
 
-
 ### Installation
 
 For running the service locally:
+
 ```bash
 pip install -r requirements.txt
 ```
 
 For development and running tests:
+
 ```bash
 pip install -r requirements.txt
 ```
@@ -58,16 +59,19 @@ python -m venv .venv
 ```
 
 Windows CMD:
+
 ```bash
 .venv\Scripts\activate
 ```
 
 PowerShell:
+
 ```powershell
 .venv\Scripts\Activate.ps1
 ```
 
 Linux/macOS:
+
 ```bash
 source .venv/bin/activate
 ```
@@ -86,17 +90,18 @@ APP_PORT=8000
 API_SECRET_KEY=your-shared-secret-key  # Key for C# Backend ↔ CV Service auth. Leave empty in DEV to disable auth.
 
 # --- Redis & Celery ---
-REDIS_URL=redis://localhost:6379/0
 ```
 
 ### 3) Start Redis & Celery Worker
 
 Start Redis using Docker Compose:
+
 ```bash
 docker compose up -d redis
 ```
 
 In a separate terminal, activate the virtual environment and start the Celery worker:
+
 ```bash
 celery -A app.services.worker worker --loglevel=info --queues=cv
 ```
@@ -104,6 +109,7 @@ celery -A app.services.worker worker --loglevel=info --queues=cv
 ### 4) Start API Service
 
 In a separate terminal, activate the virtual environment and start the FastAPI web server:
+
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
@@ -130,17 +136,17 @@ docker compose up -d
 
 All routes are versioned under `/api/v1`. Authenticated endpoints require `Authorization: Bearer <API_SECRET_KEY>` header.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| **GET** | `/api/v1/cv/health` | Health check + model status |
-| **POST** | `/api/v1/cv/analyze` | Queue async image analysis job (returns `job_id`) |
-| **GET** | `/api/v1/cv/jobs/{job_id}` | Poll async job status and retrieve result |
-| **POST** | `/api/v1/cv/history/query` | Search meal history using natural language |
-| **GET** | `/api/v1/cv/history/me` | Get recent meal logs for the current user |
-| **POST** | `/api/v1/cv/admin/cache/clear` | Clear nutrition cache (admin) |
-| **POST** | `/api/v1/cv/admin/verified` | Upsert verified nutrition entry (admin) |
-| **DELETE** | `/api/v1/cv/admin/verified/{label}` | Delete verified nutrition entry (admin) |
-| **GET** | `/metrics` | Prometheus metrics |
+| Method     | Path                                | Description                                       |
+| ---------- | ----------------------------------- | ------------------------------------------------- |
+| **GET**    | `/api/v1/cv/health`                 | Health check + model status                       |
+| **POST**   | `/api/v1/cv/analyze`                | Queue async image analysis job (returns `job_id`) |
+| **GET**    | `/api/v1/cv/jobs/{job_id}`          | Poll async job status and retrieve result         |
+| **POST**   | `/api/v1/cv/history/query`          | Search meal history using natural language        |
+| **GET**    | `/api/v1/cv/history/me`             | Get recent meal logs for the current user         |
+| **POST**   | `/api/v1/cv/admin/cache/clear`      | Clear nutrition cache (admin)                     |
+| **POST**   | `/api/v1/cv/admin/verified`         | Upsert verified nutrition entry (admin)           |
+| **DELETE** | `/api/v1/cv/admin/verified/{label}` | Delete verified nutrition entry (admin)           |
+| **GET**    | `/metrics`                          | Prometheus metrics                                |
 
 ---
 
@@ -153,6 +159,7 @@ DATABASE_URL=http://localhost:3000
 ```
 
 Or separate endpoints for read/write:
+
 ```env
 DATABASE_READ_URL=http://localhost:3000
 DATABASE_WRITE_URL=http://localhost:3001

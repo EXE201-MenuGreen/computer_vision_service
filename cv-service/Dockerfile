@@ -55,7 +55,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /opt/venv /opt/venv
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
+    && chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Create a non-root user for safer execution.
 RUN useradd --create-home --uid 1001 --shell /bin/bash cvuser
@@ -71,5 +72,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD python -c "import os, sys, urllib.request; cmd=open('/proc/1/cmdline','rb').read().decode('utf-8','ignore'); role=os.getenv('CONTAINER_ROLE','api').lower(); sys.exit(0) if role == 'worker' or 'celery' in cmd else urllib.request.urlopen(f'http://127.0.0.1:{os.getenv(\"APP_PORT\", \"8000\")}/api/v1/cv/health', timeout=5).read()"
 
-ENTRYPOINT ["docker-entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["api"]

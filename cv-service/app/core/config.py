@@ -83,6 +83,7 @@ class Settings(BaseSettings):
 
     # Security
     api_secret_key: str = ""                  # backend → AI service bearer token
+    auth_enabled: bool = True
     admin_api_key: str = ""                   # required for /cv/admin/* endpoints
     allowed_origins: List[str] = ["http://localhost"]
 
@@ -98,6 +99,9 @@ class Settings(BaseSettings):
             and self.upstash_redis_rest_url.startswith(("redis://", "rediss://"))
         ):
             self.redis_url = self.upstash_redis_rest_url
+
+        if self.app_env == "production" and not self.auth_enabled:
+            raise ValueError("AUTH_ENABLED cannot be false in production")
 
         if self.app_env == "production":
             required = {
