@@ -39,8 +39,25 @@ def _ping_celery_workers() -> bool:
         return False
 
 
-@router.get("/health", response_model=HealthResponse)
+@router.get("/health")
 async def health():
+    """Lightweight API liveness check. Does not touch Redis or Celery."""
+    return {
+        "status": "ok",
+        "service": "cv-service",
+        "version": "1.0.0",
+    }
+
+
+@router.get("/health/live")
+async def health_live():
+    """Backward-compatible liveness alias."""
+    return await health()
+
+
+@router.get("/health/deep", response_model=HealthResponse)
+async def health_deep():
+    """Dependency readiness check. Touches Redis and Celery worker."""
     ai_configured = _is_ai_configured()
     gemini_configured = _is_gemini_configured()
 
@@ -65,12 +82,6 @@ async def health():
         gemini_configured=gemini_configured,
         device=settings.device,
     )
-
-
-@router.get("/health/live")
-async def health_live():
-    """Lightweight process liveness check. Does not touch Redis or Celery."""
-    return {"status": "ok"}
 
 
 @router.post("/analyze", response_model=JobResponse)

@@ -5,6 +5,7 @@ Run: pytest tests/test_cv_service.py -v
 from __future__ import annotations
 
 import io
+import json
 from unittest.mock import patch
 
 import pytest
@@ -92,7 +93,22 @@ def mock_worker():
 
 
 # ── Health endpoint ─────────────────────────────────────────
-def test_health_ok(client):
+def test_health_liveness_does_not_touch_dependencies(client):
+    with patch("redis.asyncio.Redis.from_url") as redis_from_url, \
+         patch("app.api.cv_router._ping_celery_workers") as worker_ping:
+        r = client.get("/api/v1/cv/health")
+
+    assert r.status_code == 200
+    assert r.json() == {
+        "status": "ok",
+        "service": "cv-service",
+        "version": "1.0.0",
+    }
+    redis_from_url.assert_not_called()
+    worker_ping.assert_not_called()
+
+
+def test_health_deep_ok(client):
     class MockRedis:
         @classmethod
         def from_url(cls, *args, **kwargs):
@@ -106,7 +122,7 @@ def test_health_ok(client):
          patch("app.api.cv_router._ping_celery_workers", return_value=True), \
          patch("app.api.cv_router.settings.ai_provider", "gemini"), \
          patch("app.api.cv_router.settings.gemini_api_key", "test-gemini-key"):
-        r = client.get("/api/v1/cv/health")
+        r = client.get("/api/v1/cv/health/deep")
         assert r.status_code == 200
         data = r.json()
         assert data["status"] == "ok"
@@ -116,7 +132,7 @@ def test_health_ok(client):
         assert data["gemini_configured"] is True
 
 
-def test_health_unhealthy_when_worker_offline(client):
+def test_health_deep_unhealthy_when_worker_offline(client):
     class MockRedis:
         @classmethod
         def from_url(cls, *args, **kwargs):
@@ -130,7 +146,7 @@ def test_health_unhealthy_when_worker_offline(client):
          patch("app.api.cv_router._ping_celery_workers", return_value=False), \
          patch("app.api.cv_router.settings.ai_provider", "gemini"), \
          patch("app.api.cv_router.settings.gemini_api_key", "test-gemini-key"):
-        r = client.get("/api/v1/cv/health")
+        r = client.get("/api/v1/cv/health/deep")
         assert r.status_code == 200
         data = r.json()
         assert data == {
@@ -167,6 +183,34 @@ def test_analyze_returns_job_id(client, fake_rgb_image, mock_worker):
 
 
 # ── Job polling ─────────────────────────────────────────────
+def test_analyze_passes_personalization_context_to_worker(client, fake_rgb_image):
+    captured = {}
+
+    def fake_enqueue(*args, **kwargs):
+        captured["user_context_json"] = kwargs["user_context_json"]
+        return "job_123"
+
+    with patch("app.api.cv_router.enqueue_inference_job", side_effect=fake_enqueue):
+        r = client.post(
+            "/api/v1/cv/analyze",
+            headers={"Authorization": "Bearer test-key"},
+            files={"image": ("food.jpg", fake_rgb_image, "image/jpeg")},
+            data={
+                "user_id": "user-1",
+                "dietary_preferences": '["high_protein","low_carb"]',
+                "avoid_foods": '["do_chien"]',
+                "recent_dishes": '["pho_bo","bun_ca"]',
+            },
+        )
+
+    assert r.status_code == 200
+    context = json.loads(captured["user_context_json"])
+    assert context["user_id"] == "user-1"
+    assert context["dietary_preferences"] == ["high_protein", "low_carb"]
+    assert context["avoid_foods"] == ["do_chien"]
+    assert context["recent_dishes"] == ["pho_bo", "bun_ca"]
+
+
 def test_job_poll_processing(client):
     with patch("app.api.cv_router.get_job_result", return_value=None):
         r = client.get(
