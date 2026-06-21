@@ -49,15 +49,9 @@ async def health():
     }
 
 
-@router.get("/health/live")
-async def health_live():
-    """Backward-compatible liveness alias."""
-    return await health()
-
-
 @router.get("/health/deep", response_model=HealthResponse)
 async def health_deep():
-    """Dependency readiness check. Touches Redis and Celery worker."""
+    """Manual dependency readiness check. Touches Redis and Celery worker."""
     ai_configured = _is_ai_configured()
     gemini_configured = _is_gemini_configured()
 
