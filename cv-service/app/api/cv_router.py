@@ -39,7 +39,11 @@ def _ping_celery_workers() -> bool:
         return False
 
 
-@router.get("/health")
+@router.get(
+    "/health",
+    summary="API liveness check",
+    description="Checks only whether the FastAPI process is alive. Does not touch Redis or Celery.",
+)
 async def health():
     """Lightweight API liveness check. Does not touch Redis or Celery."""
     return {
@@ -49,7 +53,12 @@ async def health():
     }
 
 
-@router.get("/health/deep", response_model=HealthResponse)
+@router.get(
+    "/health/deep",
+    response_model=HealthResponse,
+    summary="Deep dependency health check",
+    description="Manual readiness check for Redis, Celery worker, and AI provider configuration.",
+)
 async def health_deep():
     """Manual dependency readiness check. Touches Redis and Celery worker."""
     ai_configured = _is_ai_configured()
@@ -78,7 +87,15 @@ async def health_deep():
     )
 
 
-@router.post("/analyze", response_model=JobResponse)
+@router.post(
+    "/analyze",
+    response_model=JobResponse,
+    summary="Queue food image analysis",
+    description=(
+        "Uploads a food image and optional personalization context as multipart/form-data. "
+        "Returns a job_id immediately; poll /api/v1/cv/jobs/{job_id} for the result."
+    ),
+)
 async def analyze_async(
     image: UploadFile = File(...),
     user_id: Optional[str] = Form(None, description="User UUID for personalization"),
@@ -121,7 +138,12 @@ async def analyze_async(
     return JobResponse(job_id=job_id)
 
 
-@router.get("/jobs/{job_id}", response_model=JobStatusResponse)
+@router.get(
+    "/jobs/{job_id}",
+    response_model=JobStatusResponse,
+    summary="Get analysis job result",
+    description="Returns processing while the job is running, done with result when complete, or failed with error.",
+)
 async def get_job(job_id: str, _: None = Depends(require_api_key)):
     result = get_job_result(job_id)
     if result is None:
