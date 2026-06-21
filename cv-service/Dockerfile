@@ -35,6 +35,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     APP_HOST=0.0.0.0 \
     APP_PORT=8000 \
     APP_WORKERS=1 \
+    API_DOCS_ENABLED=true \
     CONTAINER_ROLE=api \
     CELERY_APP=app.services.worker \
     CELERY_LOG_LEVEL=info \
