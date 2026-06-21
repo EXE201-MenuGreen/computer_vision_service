@@ -96,7 +96,7 @@ jobs:
             --name "${API_APP_NAME}" \
             --resource-group "${RESOURCE_GROUP}" \
             --image "${{ needs.build-and-push.outputs.image }}" \
-            --set-env-vars CONTAINER_ROLE=api
+            --set-env-vars CONTAINER_ROLE=api API_DOCS_ENABLED=true
 
       - name: Deploy worker image
         run: |
