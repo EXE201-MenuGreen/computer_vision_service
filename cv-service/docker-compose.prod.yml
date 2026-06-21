@@ -8,6 +8,7 @@ services:
     env_file: .env
     environment:
       APP_ENV: production
+      API_DOCS_ENABLED: ${API_DOCS_ENABLED:-true}
       REDIS_URL: ${REDIS_URL:?Set REDIS_URL to your Upstash rediss URL with ssl_cert_reqs=CERT_REQUIRED}
       UPSTASH_REDIS_REST_URL: ${REDIS_URL:?Set REDIS_URL to your Upstash rediss URL with ssl_cert_reqs=CERT_REQUIRED}
       CONTAINER_ROLE: api
@@ -24,6 +25,7 @@ services:
     env_file: .env
     environment:
       APP_ENV: production
+      API_DOCS_ENABLED: ${API_DOCS_ENABLED:-true}
       REDIS_URL: ${REDIS_URL:?Set REDIS_URL to your Upstash rediss URL with ssl_cert_reqs=CERT_REQUIRED}
       UPSTASH_REDIS_REST_URL: ${REDIS_URL:?Set REDIS_URL to your Upstash rediss URL with ssl_cert_reqs=CERT_REQUIRED}
       CONTAINER_ROLE: worker
