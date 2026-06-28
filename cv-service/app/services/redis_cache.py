@@ -1,5 +1,5 @@
 """
-Redis-backed nutrition cache with TTL.
+Optional Redis-backed nutrition cache with TTL.
 
   get_nutrition(label)             -> dict | None
   set_nutrition(label, data, ttl)  -> None
@@ -37,8 +37,15 @@ def _redis() -> aioredis.Redis:
     return _client
 
 
+def _enabled() -> bool:
+    return settings.nutrition_cache_enabled
+
+
 async def get_nutrition(label: str) -> Optional[dict[str, Any]]:
     """Return cached nutrition dict or None on miss / error."""
+    if not _enabled():
+        return None
+
     try:
         raw = await _redis().get(f"{_KEY_PREFIX}{label}")
         if raw:
@@ -50,6 +57,9 @@ async def get_nutrition(label: str) -> Optional[dict[str, Any]]:
 
 async def set_nutrition(label: str, data: dict[str, Any], ttl: int) -> None:
     """Store nutrition dict with TTL (seconds). No-op on error."""
+    if not _enabled():
+        return
+
     try:
         await _redis().setex(f"{_KEY_PREFIX}{label}", ttl, json.dumps(data))
     except Exception as exc:
@@ -58,6 +68,9 @@ async def set_nutrition(label: str, data: dict[str, Any], ttl: int) -> None:
 
 async def invalidate(label: str) -> int:
     """Delete one cache key. Returns number of keys deleted (0 or 1)."""
+    if not _enabled():
+        return 0
+
     try:
         return await _redis().delete(f"{_KEY_PREFIX}{label}")
     except Exception as exc:
@@ -67,6 +80,9 @@ async def invalidate(label: str) -> int:
 
 async def invalidate_all() -> int:
     """Delete all nutrition:* keys. Returns number of keys deleted."""
+    if not _enabled():
+        return 0
+
     try:
         r = _redis()
         keys = await r.keys(f"{_KEY_PREFIX}*")

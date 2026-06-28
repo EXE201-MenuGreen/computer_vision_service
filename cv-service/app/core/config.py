@@ -54,7 +54,8 @@ class Settings(BaseSettings):
     gemini_min_dish_suggestions: int = 3
     gemini_max_dish_suggestions: int = 5
 
-    # PostgREST + vector semantic search
+    # Legacy PostgREST + vector semantic search settings.
+    # Retained only for old modules that are no longer mounted in the app.
     postgrest_url: str = ""
     postgrest_api_key: str = ""
     postgrest_service_jwt: str = ""
@@ -65,10 +66,10 @@ class Settings(BaseSettings):
 
 
 
-    # Auth + meal history (Option 3)
-    meal_history_enabled: bool = True
+    # Legacy DB-backed context/history flags. Runtime CV flow is stateless.
+    meal_history_enabled: bool = False
     meal_history_similarity_threshold: float = 0.3
-    user_profile_enabled: bool = True
+    user_profile_enabled: bool = False
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
@@ -76,6 +77,7 @@ class Settings(BaseSettings):
     upstash_redis_rest_token: str = ""
 
     # Nutrition cache
+    nutrition_cache_enabled: bool = False     # optional Redis cache; keep off to reduce Upstash commands
     nutrition_cache_ttl: int = 86400          # seconds — Redis TTL for nutrition entries
     usda_name_match_threshold: float = 0.35   # min SequenceMatcher ratio OR word overlap to accept USDA result
     usda_max_retries: int = 3                 # retries after HTTP 429 from FoodData Central

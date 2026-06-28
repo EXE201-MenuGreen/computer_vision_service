@@ -1,21 +1,15 @@
 """
-NutritionService: 5-tier lookup chain with accuracy-first design.
+NutritionService: stateless lookup chain. Database-owned nutrition tiers are disabled here.
 
-  Tier 0  verified   confidence=1.00  Admin-curated Supabase table (ground truth)
-  Tier 1  redis      confidence=—      Shared Redis cache (TTL=24h, serves prior tier result)
-  Tier 2  pgvector   confidence=0.90  Semantic vector search, threshold ≥ 0.82
-  Tier 3  usda       confidence=0.75  USDA FoodData Central API + name validation
-  Tier 4  fallback   confidence=0.30  Hardcoded approximate dict
+  Tier 1  redis      confidence=—      Shared Redis cache (TTL=24h)
+  Tier 2  usda       confidence=0.75  USDA FoodData Central API + name validation
+  Tier 3  fallback   confidence=0.30  Hardcoded approximate dict
 
 Rules:
-  - Tier 0 always overrides everything and is NOT cached (admin can update any time).
-  - Redis is checked after tier 0; a hit returns the source/confidence of original tier.
+  - Redis is checked first; a hit returns the source/confidence of original tier.
   - USDA results are accepted only when the returned food name is semantically close
-    enough to the query (controlled by USDA_NAME_MATCH_THRESHOLD). Rejected USDA
-    results fall through to tier 4 — they are NOT stored in pgvector.
-  - Tier 3 & 4 hits are audit-logged so admins can review and promote to tier 0.
-  - Every non-verified result is stored in Redis with a TTL so stale data expires
-    and tier 2+ is re-checked on the next lookup.
+    enough to the query (controlled by USDA_NAME_MATCH_THRESHOLD).
+  - USDA and fallback results are stored in Redis with a TTL.
 """
 from __future__ import annotations
 
@@ -27,7 +21,6 @@ import httpx
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.db.food_nutrition import get_verified_food, match_food, upsert_food
 from app.schemas.cv_schemas import DetectedFood, FoodNutrition, MacroNutrients
 from app.services import redis_cache
 from app.services.food_labels import (
@@ -49,8 +42,6 @@ _NUT_FIBER   = 1079
 
 # Confidence constants per tier
 _CONF = {
-    "verified": 1.00,
-    "pgvector":  0.90,
     "usda":      0.75,
     "fallback":  0.30,
 }
@@ -189,40 +180,18 @@ async def _usda_search_foods(
 class NutritionService:
 
     async def _fetch_nutrition(self, query: str) -> _LookupResult:
-        """
-        5-tier lookup.  Returns (macros_per_100g, fdc_id, data_source, confidence).
-        """
+        """Lookup nutrition without touching any database."""
         canonical = resolve_canonical_key(query)
         search_text = get_usda_query(canonical)
 
-        # ── Tier 0: admin-verified (always checked first, never cached) ───────
-        verified = None
-        try:
-            verified = await get_verified_food(canonical)
-        except Exception as exc:
-            logger.warning("nutrition_verified_lookup_failed", label=canonical, error=str(exc))
-        if verified is not None:
-            logger.info("nutrition_tier0_verified", label=canonical)
-            return verified, None, "verified", _CONF["verified"]
-
-        # ── Tier 1: Redis cache (stores result from tier 2/3/4) ───────────────
+        # Tier 1: Redis cache
         cached = await redis_cache.get_nutrition(canonical)
         if cached is not None:
             logger.debug("nutrition_tier1_cache", label=canonical,
                          source=cached.get("data_source"))
             return _macros_from_cache_dict(cached)
 
-        # ── Tier 2: Supabase pgvector semantic search ─────────────────────────
-        vector_result = await match_food(label=canonical, search_text=search_text)
-        if vector_result is not None:
-            macros, fdc_id = vector_result
-            result: _LookupResult = (macros, fdc_id, "pgvector", _CONF["pgvector"])
-            await redis_cache.set_nutrition(
-                canonical, _macros_to_cache_dict(*result), settings.nutrition_cache_ttl
-            )
-            return result
-
-        # ── Tier 3: USDA FoodData Central ────────────────────────────────────
+        # Tier 2: USDA FoodData Central
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 foods = await _usda_search_foods(client, search_text, label=canonical)
@@ -236,17 +205,6 @@ class NutritionService:
                         fdc_id = str(food.get("fdcId"))
                         result = (macros, fdc_id, "usda", _CONF["usda"])
 
-                        # Persist to pgvector for future tier-2 hits
-                        asyncio.ensure_future(
-                            upsert_food(
-                                label=canonical,
-                                display_name=search_text,
-                                search_text=search_text,
-                                macros=macros,
-                                fdc_id=fdc_id,
-                                source="usda",
-                            )
-                        )
                         await redis_cache.set_nutrition(
                             canonical,
                             _macros_to_cache_dict(*result),
@@ -256,7 +214,6 @@ class NutritionService:
                                     usda_desc=usda_desc, fdc_id=fdc_id)
                         return result
                     else:
-                        # Step 4 audit: USDA returned unrelated food — log for admin review
                         logger.warning(
                             "nutrition_usda_name_mismatch",
                             label=canonical,
@@ -271,15 +228,14 @@ class NutritionService:
         except Exception as exc:
             logger.warning("nutrition_usda_failed", label=canonical, error=str(exc))
 
-        # ── Tier 4: hardcoded fallback ────────────────────────────────────────
+        # Tier 3: hardcoded fallback
         fallback = get_fallback_macros(canonical)
-        # Step 4 audit: log every fallback hit for admin review
         logger.warning(
             "nutrition_tier4_fallback",
             label=canonical,
             search_text=search_text,
             has_specific_entry=has_specific_fallback(canonical),
-            action="review_and_add_to_verified_table",
+            action="using_static_fallback",
         )
         result = (fallback, None, "fallback", _CONF["fallback"])
         await redis_cache.set_nutrition(

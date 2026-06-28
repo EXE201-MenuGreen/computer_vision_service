@@ -90,7 +90,12 @@ APP_PORT=8000
 API_SECRET_KEY=your-shared-secret-key  # Key for C# Backend ↔ CV Service auth. Leave empty in DEV to disable auth.
 
 # --- Redis & Celery ---
+NUTRITION_CACHE_ENABLED=false
 ```
+
+`NUTRITION_CACHE_ENABLED=false` keeps nutrition cache reads/writes off. Redis is
+still required when using Celery async jobs because it is the broker and result
+backend.
 
 ### 3) Start Redis & Celery Worker
 
@@ -141,29 +146,32 @@ All routes are versioned under `/api/v1`. Authenticated endpoints require `Autho
 | **GET**    | `/api/v1/cv/health`                 | Health check + model status                       |
 | **POST**   | `/api/v1/cv/analyze`                | Queue async image analysis job (returns `job_id`) |
 | **GET**    | `/api/v1/cv/jobs/{job_id}`          | Poll async job status and retrieve result         |
-| **POST**   | `/api/v1/cv/history/query`          | Search meal history using natural language        |
-| **GET**    | `/api/v1/cv/history/me`             | Get recent meal logs for the current user         |
-| **POST**   | `/api/v1/cv/admin/cache/clear`      | Clear nutrition cache (admin)                     |
-| **POST**   | `/api/v1/cv/admin/verified`         | Upsert verified nutrition entry (admin)           |
-| **DELETE** | `/api/v1/cv/admin/verified/{label}` | Delete verified nutrition entry (admin)           |
 | **GET**    | `/metrics`                          | Prometheus metrics                                |
 
 ---
 
-## Database Connection
+## Database Ownership
 
-The service connects directly to a database server. Configure one of the following in `.env`:
+This service is stateless and does not own database reads/writes. Meal history,
+verified nutrition data, user profile lookup, and final persistence belong to the
+main backend. Pass personalization context to `/api/v1/cv/analyze` directly when
+needed.
 
-```env
-DATABASE_URL=http://localhost:3000
-```
+---
 
-Or separate endpoints for read/write:
+## Upstash Command Usage
 
-```env
-DATABASE_READ_URL=http://localhost:3000
-DATABASE_WRITE_URL=http://localhost:3001
-```
+Redis/Upstash commands come from Celery job enqueue/result polling and optional
+nutrition cache. To keep command usage low:
+
+- Use `/api/v1/cv/health` for uptime checks. Do not use `/api/v1/cv/health/deep`
+  as a frequent monitor because it pings Redis and Celery.
+- Keep `NUTRITION_CACHE_ENABLED=false` unless Redis cache is worth the command
+  cost.
+- Poll `/api/v1/cv/jobs/{job_id}` from the backend with backoff instead of a tight
+  interval.
+- Use local/internal Redis for development; reserve Upstash for deployed
+  environments that need a managed broker/result backend.
 
 ---
 

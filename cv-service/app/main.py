@@ -7,9 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from app.api.admin_router import router as admin_router
 from app.api.cv_router import router as cv_router
-from app.api.history_router import router as history_router
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
 
@@ -35,14 +33,6 @@ TAGS_METADATA = [
     {
         "name": "Computer Vision",
         "description": "Food image analysis, async job polling, and service health checks.",
-    },
-    {
-        "name": "Meal History",
-        "description": "Authenticated user meal history lookup and semantic search.",
-    },
-    {
-        "name": "admin",
-        "description": "Admin-only nutrition cache and verified food management.",
     },
 ]
 
@@ -88,8 +78,6 @@ app.add_middleware(
 Instrumentator().instrument(app).expose(app)
 
 app.include_router(cv_router, prefix=API_PREFIX)
-app.include_router(history_router, prefix=API_PREFIX)
-app.include_router(admin_router, prefix=API_PREFIX)
 
 
 @app.exception_handler(Exception)

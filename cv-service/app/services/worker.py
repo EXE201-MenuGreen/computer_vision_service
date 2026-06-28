@@ -81,7 +81,11 @@ def enqueue_inference_job(
 ) -> str:
     """Create a background job for remote AI inference and return the job id."""
     image_bytes_hex = binascii.hexlify(image_bytes).decode("utf-8")
-    task = analyze_image_task.delay(image_bytes_hex, filename, content_type, user_context_json)
+    task = celery_app.send_task(
+        "cv.analyze_image",
+        args=[image_bytes_hex, filename, content_type, user_context_json],
+        queue="cv",
+    )
     return task.id
 
 

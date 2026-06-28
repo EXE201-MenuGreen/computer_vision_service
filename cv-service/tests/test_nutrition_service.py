@@ -58,9 +58,7 @@ async def test_usda_search_returns_none_after_max_retries():
 async def test_fetch_nutrition_falls_back_when_usda_rate_limited():
     service = NutritionService()
 
-    with patch("app.db.food_nutrition.get_verified_food", new_callable=AsyncMock, return_value=None), \
-         patch("app.services.redis_cache.get_nutrition", new_callable=AsyncMock, return_value=None), \
-         patch("app.db.food_nutrition.match_food", new_callable=AsyncMock, return_value=None), \
+    with patch("app.services.redis_cache.get_nutrition", new_callable=AsyncMock, return_value=None), \
          patch(
              "app.services.nutrition_service._usda_search_foods",
              new_callable=AsyncMock,
