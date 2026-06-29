@@ -59,7 +59,7 @@ async def health():
     summary="Deep dependency health check",
     description="Manual readiness check for Redis, Celery worker, and AI provider configuration.",
 )
-async def health_deep():
+async def health_deep(_: None = Depends(require_api_key)):
     """Manual dependency readiness check. Touches Redis and Celery worker."""
     ai_configured = _is_ai_configured()
     gemini_configured = _is_gemini_configured()

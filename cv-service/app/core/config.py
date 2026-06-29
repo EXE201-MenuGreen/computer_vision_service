@@ -87,6 +87,7 @@ class Settings(BaseSettings):
     # Security
     api_secret_key: str = ""                  # backend → AI service bearer token
     auth_enabled: bool = True
+    api_rate_limit_per_minute: int = 120      # per API key/IP; <=0 disables in-process limiter
     admin_api_key: str = ""                   # required for /cv/admin/* endpoints
     allowed_origins: List[str] = ["http://localhost"]
 

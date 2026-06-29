@@ -9,6 +9,7 @@ import json
 from unittest.mock import patch
 
 import pytest
+from fastapi import Request
 from fastapi.testclient import TestClient
 from PIL import Image
 
@@ -27,7 +28,10 @@ def client():
     from app.api.auth import require_api_key
     from fastapi import Header, HTTPException, status
 
-    async def mock_require_api_key(authorization: str = Header(default="", alias="Authorization")):
+    async def mock_require_api_key(
+        request: Request,
+        authorization: str = Header(default="", alias="Authorization"),
+    ):
         prefix = "Bearer "
         if not authorization.startswith(prefix):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing Bearer token.")
@@ -122,7 +126,10 @@ def test_health_deep_ok(client):
          patch("app.api.cv_router._ping_celery_workers", return_value=True), \
          patch("app.api.cv_router.settings.ai_provider", "gemini"), \
          patch("app.api.cv_router.settings.gemini_api_key", "test-gemini-key"):
-        r = client.get("/api/v1/cv/health/deep")
+        r = client.get(
+            "/api/v1/cv/health/deep",
+            headers={"Authorization": "Bearer test-key"},
+        )
         assert r.status_code == 200
         data = r.json()
         assert data["status"] == "ok"
@@ -146,7 +153,10 @@ def test_health_deep_unhealthy_when_worker_offline(client):
          patch("app.api.cv_router._ping_celery_workers", return_value=False), \
          patch("app.api.cv_router.settings.ai_provider", "gemini"), \
          patch("app.api.cv_router.settings.gemini_api_key", "test-gemini-key"):
-        r = client.get("/api/v1/cv/health/deep")
+        r = client.get(
+            "/api/v1/cv/health/deep",
+            headers={"Authorization": "Bearer test-key"},
+        )
         assert r.status_code == 200
         data = r.json()
         assert data == {
@@ -327,8 +337,10 @@ async def test_inference_client_via_gemini():
         result = await analyze_image(b"abc", "food.jpg", "image/jpeg", ctx)
 
     assert result["job_id"] == "job_gemini"
-    assert FakeClient.captured_payload["generationConfig"]["temperature"] == 0.9
-    assert "high_protein" in FakeClient.captured_payload["contents"][0]["parts"][0]["text"]
+    payload = FakeClient.captured_payload
+    assert payload is not None
+    assert payload["generationConfig"]["temperature"] == 0.9
+    assert "high_protein" in payload["contents"][0]["parts"][0]["text"]
     assert result["status"] == "done"
 
 
@@ -353,8 +365,31 @@ def test_api_key_dependency_rejects_wrong_key():
     from app.api.auth import require_api_key
     from app.core.config import settings
     from fastapi import HTTPException
+    from starlette.requests import Request
+
+    request = Request({"type": "http", "client": ("127.0.0.1", 1234), "headers": []})
 
     with patch.object(settings, "api_secret_key", "test-secret"):
         with pytest.raises(HTTPException):
             import asyncio
-            asyncio.run(require_api_key("Bearer wrong-key"))
+            asyncio.run(require_api_key(request, "Bearer wrong-key"))
+
+
+def test_api_key_dependency_rate_limits_valid_key():
+    from app.api.auth import _rate_buckets, require_api_key
+    from app.core.config import settings
+    from fastapi import HTTPException
+    from starlette.requests import Request
+    import asyncio
+
+    request = Request({"type": "http", "client": ("127.0.0.1", 1234), "headers": []})
+    _rate_buckets.clear()
+
+    with patch.object(settings, "api_secret_key", "test-secret"), \
+         patch.object(settings, "api_rate_limit_per_minute", 1):
+        asyncio.run(require_api_key(request, "Bearer test-secret"))
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(require_api_key(request, "Bearer test-secret"))
+
+    assert exc.value.status_code == 429
+    _rate_buckets.clear()

@@ -97,6 +97,9 @@ NUTRITION_CACHE_ENABLED=false
 still required when using Celery async jobs because it is the broker and result
 backend.
 
+Protected endpoints require `Authorization: Bearer <API_SECRET_KEY>`. Use
+`API_RATE_LIMIT_PER_MINUTE` to cap direct calls per API key/IP.
+
 ### 3) Start Redis & Celery Worker
 
 Start Redis using Docker Compose:
@@ -144,6 +147,7 @@ All routes are versioned under `/api/v1`. Authenticated endpoints require `Autho
 | Method     | Path                                | Description                                       |
 | ---------- | ----------------------------------- | ------------------------------------------------- |
 | **GET**    | `/api/v1/cv/health`                 | Health check + model status                       |
+| **GET**    | `/api/v1/cv/health/deep`            | Protected manual dependency health check          |
 | **POST**   | `/api/v1/cv/analyze`                | Queue async image analysis job (returns `job_id`) |
 | **GET**    | `/api/v1/cv/jobs/{job_id}`          | Poll async job status and retrieve result         |
 | **GET**    | `/metrics`                          | Prometheus metrics                                |

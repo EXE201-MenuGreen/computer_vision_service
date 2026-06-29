@@ -1,0 +1,30 @@
+---
+description: Vietnamese for chat, English for all code
+alwaysApply: true
+---
+
+# Language Preferences
+
+## Chat & explanations
+- Communicate with the user in **Vietnamese** (tiếng Việt).
+- Use clear, natural Vietnamese for summaries, explanations, questions, and status updates.
+
+## Code & technical artifacts
+- Write all **code** in **English**: identifiers, comments, docstrings, commit messages, PR descriptions, and log messages.
+- Keep existing naming conventions (e.g. Vietnamese field names in API schemas like `ten_nguyen_lieu`) when they are part of the project contract — do not rename them to English unless asked.
+
+## Examples
+
+```python
+# ✅ GOOD — English code, Vietnamese user-facing strings only where required by API
+def enqueue_inference_job(image_bytes: bytes, filename: str) -> str:
+    """Create a background job for remote AI inference."""
+    logger.info("job_queued", job_id=task.id)
+```
+
+```python
+# ❌ BAD — Vietnamese identifiers or comments
+def xep_hang_cong_viec(du_lieu_anh: bytes) -> str:
+    # Tạo job nền
+    ...
+```
