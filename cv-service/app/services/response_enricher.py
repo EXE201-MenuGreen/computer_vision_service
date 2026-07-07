@@ -125,6 +125,8 @@ async def _enrich_dish_nutrition(dishes: List[Dict[str, Any]]) -> List[Dict[str,
         ]
         breakdown = await nutrition_service.lookup_batch(detected)
         total = nutrition_service.sum_macros(breakdown)
+        dish_copy["nutrition_breakdown"] = [item.model_dump() for item in breakdown]
+        dish_copy["total_macros"] = total.model_dump()
         dish_copy["thong_tin_dinh_duong_mon_an"] = _macros_to_nutrition_info(total)
         enriched.append(dish_copy)
 

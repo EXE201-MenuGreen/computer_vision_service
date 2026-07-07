@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import io
 import json
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import Request
@@ -261,6 +261,10 @@ def test_job_poll_processing(client):
     assert r.status_code == 200
     assert r.json()["status"] == "processing"
     assert r.json()["celery_state"] == "STARTED"
+    assert r.json()["worker_active"] is True
+    assert "Worker is processing" in r.json()["message"]
+    assert r.json()["steps"][1]["name"] == "worker"
+    assert r.json()["steps"][1]["status"] == "active"
 
 
 def test_job_poll_queued(client):
@@ -275,6 +279,9 @@ def test_job_poll_queued(client):
     assert r.status_code == 200
     assert r.json()["status"] == "queued"
     assert r.json()["celery_state"] == "PENDING"
+    assert r.json()["worker_active"] is False
+    assert "Waiting for a Celery worker" in r.json()["message"]
+    assert r.json()["steps"][1]["status"] == "pending"
 
 
 def test_job_poll_done(client, mock_api_response):
@@ -291,6 +298,8 @@ def test_job_poll_done(client, mock_api_response):
     data = r.json()
     assert data["status"] == "done"
     assert data["celery_state"] == "SUCCESS"
+    assert data["worker_active"] is True
+    assert data["steps"][-1]["status"] == "done"
     assert data["result"]["status"] == "done"
     assert data["result"]["nguyen_lieu_tho_quet_duoc"][0]["ten_nguyen_lieu_ky_thuat"] == "uc_ga"
     enrich.assert_not_called()
@@ -413,6 +422,64 @@ def test_ai_inference_response_schema():
 
 
 # ── Auth helper ────────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_enrich_ai_response_adds_nutrition_to_each_suggested_dish():
+    from app.schemas.cv_schemas import FoodNutrition, MacroNutrients
+    from app.services.response_enricher import enrich_ai_response
+
+    payload = {
+        "job_id": "job_1",
+        "request_id": "req_1",
+        "status": "done",
+        "nguyen_lieu_tho_quet_duoc": [],
+        "danh_sach_mon_an_goi_y": [
+            {
+                "id_mon_an_goi_y": "rec_01",
+                "ten_mon_an": "Uc ga ap chao",
+                "ten_mon_an_ky_thuat": "uc_ga_ap_chao",
+                "mo_ta_ngan": "Mon an giau protein.",
+                "do_kha_thi": "95%",
+                "confidence": 0.95,
+                "nguyen_lieu_su_dung": [
+                    {"ten": "Uc ga", "ten_ky_thuat": "uc_ga", "khoi_luong_g": 200}
+                ],
+                "thong_tin_dinh_duong_mon_an": {
+                    "tong_calories": 0,
+                    "protein_g": 0,
+                    "carbs_g": 0,
+                    "fat_g": 0,
+                    "fiber_g": 0,
+                },
+            }
+        ],
+    }
+    breakdown = [
+        FoodNutrition(
+            food_label_key="uc_ga",
+            food_label_vi="Uc ga",
+            estimated_grams=200,
+            macros=MacroNutrients(
+                calories_kcal=330,
+                protein_g=62,
+                carbs_g=0,
+                fat_g=7,
+                fiber_g=0,
+            ),
+            data_source="usda",
+            confidence=0.75,
+        )
+    ]
+
+    with patch("app.services.response_enricher.settings.nutrition_enrichment_enabled", True), \
+         patch("app.services.nutrition_service.nutrition_service.lookup_batch", new=AsyncMock(return_value=breakdown)):
+        result = await enrich_ai_response(payload)
+
+    dish = result["danh_sach_mon_an_goi_y"][0]
+    assert dish["nutrition_breakdown"][0]["food_label_key"] == "uc_ga"
+    assert dish["total_macros"]["protein_g"] == 62
+    assert dish["thong_tin_dinh_duong_mon_an"]["tong_calories"] == 330
+
+
 def test_api_key_dependency_rejects_wrong_key():
     from app.api.auth import require_api_key
     from app.core.config import settings

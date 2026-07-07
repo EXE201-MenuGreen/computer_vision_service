@@ -99,6 +99,8 @@ class SuggestedDish(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     nguyen_lieu_su_dung: List[RecipeIngredient]
     thong_tin_dinh_duong_mon_an: NutritionInfo
+    nutrition_breakdown: Optional[List[FoodNutrition]] = None
+    total_macros: Optional[MacroNutrients] = None
     an_toan_cho_user: Optional[bool] = None
     dich_ung_trung: Optional[List[str]] = Field(default_factory=list)
     canh_bao_suc_khoe: Optional[List[str]] = Field(default_factory=list)
@@ -127,10 +129,19 @@ class JobResponse(BaseModel):
     message: str = "Analysis queued. Poll /cv/jobs/{job_id} for result."
 
 
+class JobProgressStep(BaseModel):
+    name: str
+    status: Literal["pending", "active", "done", "failed"]
+    description: str
+
+
 class JobStatusResponse(BaseModel):
     job_id: str
     status: str                   # queued | processing | done | failed
     celery_state: Optional[str] = None
+    worker_active: bool = False
+    message: str
+    steps: List[JobProgressStep] = Field(default_factory=list)
     result: Optional[AIInferenceResponse] = None
     error: Optional[str] = None
 

@@ -6,7 +6,13 @@ from fastapi import APIRouter, UploadFile, File, Form, Depends
 
 from app.api.analyze_context import build_user_analysis_context
 from app.api.auth import require_api_key
-from app.schemas.cv_schemas import JobResponse, JobStatusResponse, HealthResponse, AIInferenceResponse
+from app.schemas.cv_schemas import (
+    AIInferenceResponse,
+    HealthResponse,
+    JobProgressStep,
+    JobResponse,
+    JobStatusResponse,
+)
 from app.services.image_validator import validate_and_load_image
 from app.services.worker import TASK_HEALTH_CHECK, celery_app, enqueue_inference_job, get_job_result
 from app.core.config import settings
@@ -64,6 +70,60 @@ def _prepare_image_for_inference(pil_image) -> bytes:
         optimize=True,
     )
     return buf.getvalue()
+
+
+def _job_progress(status: str, celery_state: str | None) -> tuple[bool, str, list[JobProgressStep]]:
+    """Build a user-facing progress description from Celery state."""
+    worker_active = celery_state in {"STARTED", "RETRY", "SUCCESS"}
+
+    if status == "queued":
+        message = "Job is queued. Waiting for a Celery worker to pick it up."
+        steps = [
+            JobProgressStep(name="queued", status="active", description="Task is stored in Redis queue."),
+            JobProgressStep(name="worker", status="pending", description="Waiting for worker to receive the task."),
+            JobProgressStep(name="ai_analysis", status="pending", description="Gemini analysis has not started yet."),
+            JobProgressStep(name="result", status="pending", description="Result is not available yet."),
+        ]
+        return worker_active, message, steps
+
+    if celery_state == "RETRY":
+        message = "Worker hit an error and Celery is retrying the job."
+        steps = [
+            JobProgressStep(name="queued", status="done", description="Task was accepted from Redis queue."),
+            JobProgressStep(name="worker", status="active", description="Worker is retrying after a processing error."),
+            JobProgressStep(name="ai_analysis", status="active", description="Gemini or nutrition processing is being retried."),
+            JobProgressStep(name="result", status="pending", description="Final result is not available yet."),
+        ]
+        return worker_active, message, steps
+
+    if status == "processing":
+        message = "Worker is processing the image with Gemini and nutrition enrichment."
+        steps = [
+            JobProgressStep(name="queued", status="done", description="Task was accepted from Redis queue."),
+            JobProgressStep(name="worker", status="active", description="Celery worker has started this job."),
+            JobProgressStep(name="ai_analysis", status="active", description="Gemini analysis and enrichment are running."),
+            JobProgressStep(name="result", status="pending", description="Result is not available yet."),
+        ]
+        return worker_active, message, steps
+
+    if status == "failed":
+        message = "Worker failed to complete the job."
+        steps = [
+            JobProgressStep(name="queued", status="done", description="Task was accepted from Redis queue."),
+            JobProgressStep(name="worker", status="failed", description="Worker returned a failure for this job."),
+            JobProgressStep(name="ai_analysis", status="failed", description="Gemini or enrichment processing failed."),
+            JobProgressStep(name="result", status="failed", description="No successful result is available."),
+        ]
+        return worker_active, message, steps
+
+    message = "Job completed successfully."
+    steps = [
+        JobProgressStep(name="queued", status="done", description="Task was accepted from Redis queue."),
+        JobProgressStep(name="worker", status="done", description="Worker completed processing."),
+        JobProgressStep(name="ai_analysis", status="done", description="Gemini analysis and enrichment completed."),
+        JobProgressStep(name="result", status="done", description="Result is available."),
+    ]
+    return worker_active, message, steps
 
 
 @router.get(
@@ -171,19 +231,28 @@ async def analyze_async(
 )
 async def get_job(job_id: str, _: None = Depends(require_api_key)):
     result = get_job_result(job_id)
+    status = result["status"]
     celery_state = result.get("celery_state")
-    if result.get("status") in {"queued", "processing"}:
+    worker_active, message, steps = _job_progress(status, celery_state)
+
+    if status in {"queued", "processing"}:
         return JobStatusResponse(
             job_id=job_id,
-            status=result["status"],
+            status=status,
             celery_state=celery_state,
+            worker_active=worker_active,
+            message=message,
+            steps=steps,
             error=result.get("error"),
         )
-    if result.get("status") == "failed":
+    if status == "failed":
         return JobStatusResponse(
             job_id=job_id,
             status="failed",
             celery_state=celery_state,
+            worker_active=worker_active,
+            message=message,
+            steps=steps,
             error=result.get("error"),
         )
 
@@ -192,5 +261,8 @@ async def get_job(job_id: str, _: None = Depends(require_api_key)):
         job_id=job_id,
         status="done",
         celery_state=celery_state,
+        worker_active=worker_active,
+        message=message,
+        steps=steps,
         result=AIInferenceResponse(**payload),
     )
