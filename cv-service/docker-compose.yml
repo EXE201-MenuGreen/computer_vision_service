@@ -17,6 +17,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       UPSTASH_REDIS_REST_URL: redis://redis:6379/0
       CONTAINER_ROLE: api
+      CELERY_QUEUE: ${CELERY_QUEUE:-cv}
     ports:
       - "8000:8000" # host:container — backend goi http://cv-service:8000
 
@@ -46,11 +47,12 @@ services:
       REDIS_URL: redis://redis:6379/0
       UPSTASH_REDIS_REST_URL: redis://redis:6379/0
       CONTAINER_ROLE: worker
+      CELERY_QUEUE: ${CELERY_QUEUE:-cv}
     command: >
       celery -A app.services.worker worker
       --loglevel=info
       --concurrency=1
-      --queues=cv
+      --queues=${CELERY_QUEUE:-cv}
 
     depends_on:
       - redis

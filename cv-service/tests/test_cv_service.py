@@ -170,6 +170,32 @@ def test_health_deep_unhealthy_when_worker_offline(client):
         }
 
 
+def test_ping_celery_workers_fails_when_health_task_does_not_return_ok():
+    from unittest.mock import MagicMock
+
+    from app.api.cv_router import _ping_celery_workers
+
+    task = MagicMock()
+    task.get.return_value = {"status": "unexpected"}
+
+    with patch("app.api.cv_router.celery_app.send_task", return_value=task):
+        assert _ping_celery_workers() is False
+    task.forget.assert_called_once()
+
+
+def test_ping_celery_workers_accepts_real_health_task_result():
+    from unittest.mock import MagicMock
+
+    from app.api.cv_router import _ping_celery_workers
+
+    task = MagicMock()
+    task.get.return_value = {"status": "ok"}
+
+    with patch("app.api.cv_router.celery_app.send_task", return_value=task):
+        assert _ping_celery_workers() is True
+    task.forget.assert_called_once()
+
+
 # ── Auth guard ──────────────────────────────────────────────
 def test_analyze_rejects_missing_bearer(client, fake_rgb_image):
     r = client.post(
@@ -197,6 +223,7 @@ def test_analyze_passes_personalization_context_to_worker(client, fake_rgb_image
     captured = {}
 
     def fake_enqueue(*args, **kwargs):
+        captured["content_type"] = args[2]
         captured["user_context_json"] = kwargs["user_context_json"]
         return "job_123"
 
@@ -214,6 +241,7 @@ def test_analyze_passes_personalization_context_to_worker(client, fake_rgb_image
         )
 
     assert r.status_code == 200
+    assert captured["content_type"] == "image/jpeg"
     context = json.loads(captured["user_context_json"])
     assert context["user_id"] == "user-1"
     assert context["dietary_preferences"] == ["high_protein", "low_carb"]
@@ -222,17 +250,39 @@ def test_analyze_passes_personalization_context_to_worker(client, fake_rgb_image
 
 
 def test_job_poll_processing(client):
-    with patch("app.api.cv_router.get_job_result", return_value=None):
+    with patch(
+        "app.api.cv_router.get_job_result",
+        return_value={"status": "processing", "celery_state": "STARTED"},
+    ):
         r = client.get(
             "/api/v1/cv/jobs/job_123",
             headers={"Authorization": "Bearer test-key"},
         )
     assert r.status_code == 200
     assert r.json()["status"] == "processing"
+    assert r.json()["celery_state"] == "STARTED"
+
+
+def test_job_poll_queued(client):
+    with patch(
+        "app.api.cv_router.get_job_result",
+        return_value={"status": "queued", "celery_state": "PENDING"},
+    ):
+        r = client.get(
+            "/api/v1/cv/jobs/job_123",
+            headers={"Authorization": "Bearer test-key"},
+        )
+    assert r.status_code == 200
+    assert r.json()["status"] == "queued"
+    assert r.json()["celery_state"] == "PENDING"
 
 
 def test_job_poll_done(client, mock_api_response):
-    with patch("app.api.cv_router.get_job_result", return_value={"status": "done", "result": mock_api_response}):
+    with patch(
+        "app.api.cv_router.get_job_result",
+        return_value={"status": "done", "celery_state": "SUCCESS", "result": mock_api_response},
+    ), \
+         patch("app.services.response_enricher.enrich_ai_response") as enrich:
         r = client.get(
             "/api/v1/cv/jobs/job_123",
             headers={"Authorization": "Bearer test-key"},
@@ -240,8 +290,10 @@ def test_job_poll_done(client, mock_api_response):
     assert r.status_code == 200
     data = r.json()
     assert data["status"] == "done"
+    assert data["celery_state"] == "SUCCESS"
     assert data["result"]["status"] == "done"
     assert data["result"]["nguyen_lieu_tho_quet_duoc"][0]["ten_nguyen_lieu_ky_thuat"] == "uc_ga"
+    enrich.assert_not_called()
 
 
 # ── Inference client ────────────────────────────────────────

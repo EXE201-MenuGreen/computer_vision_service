@@ -8,8 +8,7 @@ from app.api.analyze_context import build_user_analysis_context
 from app.api.auth import require_api_key
 from app.schemas.cv_schemas import JobResponse, JobStatusResponse, HealthResponse, AIInferenceResponse
 from app.services.image_validator import validate_and_load_image
-from app.services.response_enricher import enrich_ai_response
-from app.services.worker import celery_app, enqueue_inference_job, get_job_result
+from app.services.worker import TASK_HEALTH_CHECK, celery_app, enqueue_inference_job, get_job_result
 from app.core.config import settings
 from app.core.logging import get_logger
 
@@ -31,12 +30,40 @@ def _is_gemini_configured() -> bool:
 
 
 def _ping_celery_workers() -> bool:
+    task = None
     try:
-        responses = celery_app.control.inspect(timeout=1).ping()
-        return bool(responses)
+        task = celery_app.send_task(
+            TASK_HEALTH_CHECK,
+            queue=settings.celery_queue,
+        )
+        result = task.get(timeout=settings.celery_health_timeout_seconds)
+        return isinstance(result, dict) and result.get("status") == "ok"
     except Exception as exc:
         logger.error("health_check_worker_failed", error=str(exc))
         return False
+    finally:
+        if task is not None:
+            try:
+                task.forget()
+            except Exception:
+                pass
+
+
+def _prepare_image_for_inference(pil_image) -> bytes:
+    """Resize large uploads and encode them as JPEG before sending to the worker."""
+    max_dimension = settings.image_max_dimension_px
+    if max_dimension > 0 and max(pil_image.size) > max_dimension:
+        pil_image = pil_image.copy()
+        pil_image.thumbnail((max_dimension, max_dimension))
+
+    buf = io.BytesIO()
+    pil_image.save(
+        buf,
+        format="JPEG",
+        quality=settings.image_jpeg_quality,
+        optimize=True,
+    )
+    return buf.getvalue()
 
 
 @router.get(
@@ -117,9 +144,7 @@ async def analyze_async(
     Queue async image analysis. Optional form fields personalize Gemini suggestions.
     """
     pil_image = await validate_and_load_image(image)
-    buf = io.BytesIO()
-    pil_image.save(buf, format="JPEG", quality=90)
-    image_bytes = buf.getvalue()
+    image_bytes = _prepare_image_for_inference(pil_image)
 
     user_context = await build_user_analysis_context(
         user_id=user_id,
@@ -131,7 +156,7 @@ async def analyze_async(
     job_id = enqueue_inference_job(
         image_bytes,
         image.filename or "image.jpg",
-        image.content_type or "image/jpeg",
+        "image/jpeg",
         user_context_json=user_context.model_dump_json(),
     )
     logger.info("job_queued", job_id=job_id, user_id=user_id)
@@ -146,20 +171,26 @@ async def analyze_async(
 )
 async def get_job(job_id: str, _: None = Depends(require_api_key)):
     result = get_job_result(job_id)
-    if result is None:
-        return JobStatusResponse(job_id=job_id, status="processing")
+    celery_state = result.get("celery_state")
+    if result.get("status") in {"queued", "processing"}:
+        return JobStatusResponse(
+            job_id=job_id,
+            status=result["status"],
+            celery_state=celery_state,
+            error=result.get("error"),
+        )
     if result.get("status") == "failed":
-        return JobStatusResponse(job_id=job_id, status="failed", error=result.get("error"))
-    payload = result.get("result")
-    if payload is None:
-        return JobStatusResponse(job_id=job_id, status="processing")
+        return JobStatusResponse(
+            job_id=job_id,
+            status="failed",
+            celery_state=celery_state,
+            error=result.get("error"),
+        )
 
-    if (
-        settings.nutrition_enrichment_enabled
-        and payload.get("status") == "done"
-        and payload.get("nutrition_breakdown") is None
-        and payload.get("nguyen_lieu_tho_quet_duoc")
-    ):
-        payload = await enrich_ai_response(payload)
-
-    return JobStatusResponse(job_id=job_id, status="done", result=AIInferenceResponse(**payload))
+    payload = result["result"]
+    return JobStatusResponse(
+        job_id=job_id,
+        status="done",
+        celery_state=celery_state,
+        result=AIInferenceResponse(**payload),
+    )

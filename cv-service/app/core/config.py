@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     # Image validation
     max_image_size_mb: int = 25
     allowed_mime_types: List[str] = ["image/jpeg", "image/png", "image/webp"]
+    image_max_dimension_px: int = 1600
+    image_jpeg_quality: int = 85
 
     # Nutrition API
     usda_api_key: str = ""
@@ -41,7 +43,7 @@ class Settings(BaseSettings):
     # AI inference API (remote model)
     ai_api_base_url: str = ""
     ai_api_key: str = ""
-    ai_api_timeout_seconds: float = 30.0
+    ai_api_timeout_seconds: float = 75.0
     ai_api_poll_interval_seconds: float = 1.5
 
     # AI provider configuration (remote_api | gemini)
@@ -75,6 +77,10 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     upstash_redis_rest_url: str = ""
     upstash_redis_rest_token: str = ""
+
+    # Celery
+    celery_queue: str = "cv"
+    celery_health_timeout_seconds: float = 3.0
 
     # Nutrition cache
     nutrition_cache_enabled: bool = False     # optional Redis cache; keep off to reduce Upstash commands

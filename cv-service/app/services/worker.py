@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import binascii
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from celery import Celery
 
@@ -16,6 +16,8 @@ from app.core.config import settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+TASK_ANALYZE_IMAGE = "cv.analyze_image"
+TASK_HEALTH_CHECK = "cv.health_check"
 
 celery_app = Celery(
     "cv_worker",
@@ -30,11 +32,17 @@ celery_app.conf.update(
     task_track_started=True,
     result_expires=3600,            # results live 1 hour in Redis
     worker_prefetch_multiplier=1,   # process one task at a time
-    task_default_queue="cv",
+    task_default_queue=settings.celery_queue,
 )
 
 
-@celery_app.task(bind=True, name="cv.analyze_image", max_retries=2)
+@celery_app.task(name=TASK_HEALTH_CHECK)
+def health_check_task() -> dict[str, str]:
+    """Lightweight task used by /health/deep to verify real queue execution."""
+    return {"status": "ok"}
+
+
+@celery_app.task(bind=True, name=TASK_ANALYZE_IMAGE, max_retries=2)
 def analyze_image_task(
     self,
     image_bytes_hex: str,
@@ -82,21 +90,24 @@ def enqueue_inference_job(
     """Create a background job for remote AI inference and return the job id."""
     image_bytes_hex = binascii.hexlify(image_bytes).decode("utf-8")
     task = celery_app.send_task(
-        "cv.analyze_image",
+        TASK_ANALYZE_IMAGE,
         args=[image_bytes_hex, filename, content_type, user_context_json],
-        queue="cv",
+        queue=settings.celery_queue,
     )
     return task.id
 
 
-def get_job_result(job_id: str) -> Optional[Dict[str, Any]]:
+def get_job_result(job_id: str) -> Dict[str, Any]:
     """Query Celery's AsyncResult backend for the job result."""
     from celery.result import AsyncResult
     res = AsyncResult(job_id, app=celery_app)
     if res.state == "SUCCESS":
-        return {"status": "done", "result": res.result}
+        return {"status": "done", "celery_state": res.state, "result": res.result}
     elif res.state == "FAILURE":
-        return {"status": "failed", "error": str(res.result)}
-    elif res.state in ("PENDING", "RECEIVED", "STARTED", "RETRY"):
-        return None  # Represents processing/queued in cv_router
-    return None
+        return {"status": "failed", "celery_state": res.state, "error": str(res.result)}
+    elif res.state in ("PENDING", "RECEIVED"):
+        return {"status": "queued", "celery_state": res.state}
+    elif res.state in ("STARTED", "RETRY"):
+        error = str(res.result) if res.state == "RETRY" and res.result else None
+        return {"status": "processing", "celery_state": res.state, "error": error}
+    return {"status": "processing", "celery_state": res.state}

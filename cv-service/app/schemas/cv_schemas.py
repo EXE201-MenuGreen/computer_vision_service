@@ -130,6 +130,7 @@ class JobResponse(BaseModel):
 class JobStatusResponse(BaseModel):
     job_id: str
     status: str                   # queued | processing | done | failed
+    celery_state: Optional[str] = None
     result: Optional[AIInferenceResponse] = None
     error: Optional[str] = None
 
