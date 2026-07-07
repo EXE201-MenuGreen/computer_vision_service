@@ -6,13 +6,15 @@ from hashlib import sha256
 from threading import Lock
 from time import monotonic
 
-from fastapi import Header, HTTPException, Request, status
+from fastapi import HTTPException, Request, Security, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.core.config import settings
 
 _RATE_WINDOW_SECONDS = 60.0
 _rate_lock = Lock()
 _rate_buckets: dict[str, deque[float]] = defaultdict(deque)
+_bearer = HTTPBearer(auto_error=False)
 
 
 def _rate_limit_key(request: Request, token: str) -> str:
@@ -48,7 +50,7 @@ def _check_rate_limit(request: Request, token: str) -> None:
 
 async def require_api_key(
     request: Request,
-    authorization: str = Header(default="", alias="Authorization"),
+    credentials: HTTPAuthorizationCredentials | None = Security(_bearer),
 ) -> None:
     """
     Validate Authorization: Bearer <key> for requests coming from backend.
@@ -64,11 +66,10 @@ async def require_api_key(
             )
         return
 
-    prefix = "Bearer "
-    if not authorization.startswith(prefix):
+    if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing Bearer token.")
 
-    token = authorization.removeprefix(prefix).strip()
+    token = credentials.credentials.strip()
     if token != settings.api_secret_key:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key.")
 

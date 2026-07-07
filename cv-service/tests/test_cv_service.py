@@ -365,31 +365,35 @@ def test_api_key_dependency_rejects_wrong_key():
     from app.api.auth import require_api_key
     from app.core.config import settings
     from fastapi import HTTPException
+    from fastapi.security import HTTPAuthorizationCredentials
     from starlette.requests import Request
 
     request = Request({"type": "http", "client": ("127.0.0.1", 1234), "headers": []})
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="wrong-key")
 
     with patch.object(settings, "api_secret_key", "test-secret"):
         with pytest.raises(HTTPException):
             import asyncio
-            asyncio.run(require_api_key(request, "Bearer wrong-key"))
+            asyncio.run(require_api_key(request, credentials))
 
 
 def test_api_key_dependency_rate_limits_valid_key():
     from app.api.auth import _rate_buckets, require_api_key
     from app.core.config import settings
     from fastapi import HTTPException
+    from fastapi.security import HTTPAuthorizationCredentials
     from starlette.requests import Request
     import asyncio
 
     request = Request({"type": "http", "client": ("127.0.0.1", 1234), "headers": []})
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="test-secret")
     _rate_buckets.clear()
 
     with patch.object(settings, "api_secret_key", "test-secret"), \
          patch.object(settings, "api_rate_limit_per_minute", 1):
-        asyncio.run(require_api_key(request, "Bearer test-secret"))
+        asyncio.run(require_api_key(request, credentials))
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(require_api_key(request, "Bearer test-secret"))
+            asyncio.run(require_api_key(request, credentials))
 
     assert exc.value.status_code == 429
     _rate_buckets.clear()
