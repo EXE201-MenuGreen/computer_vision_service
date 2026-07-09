@@ -8,12 +8,17 @@ from __future__ import annotations
 
 import asyncio
 import binascii
-from typing import Any, Dict
+import json
+from typing import Any, Dict, Optional
 
 from celery import Celery
+import httpx
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.schemas.cv_schemas import UserAnalysisContext
+from app.services.inference_client import analyze_image
+from app.services.response_utils import normalize_ai_response, ai_circuit_breaker
 
 logger = get_logger(__name__)
 TASK_ANALYZE_IMAGE = "cv.analyze_image"
@@ -30,11 +35,41 @@ celery_app.conf.update(
     result_serializer="json",
     accept_content=["json"],
     task_track_started=True,
-    result_expires=3600,            # results live 1 hour in Redis
-    worker_prefetch_multiplier=1,   # process one task at a time
+    result_expires=3600,
+    worker_prefetch_multiplier=1,
     task_default_queue=settings.celery_queue,
 )
 
+
+# ── Transient Error Detection ────────────────────────────────────────────
+
+def _is_transient_error(exc: Exception) -> bool:
+    """Determine if an error is transient and should be retried."""
+    transient_exceptions = (
+        httpx.TimeoutException,
+        httpx.ConnectError,
+        httpx.RemoteProtocolError,
+        httpx.ConnectTimeout,
+        httpx.ReadTimeout,
+        httpx.WriteTimeout,
+    )
+    if isinstance(exc, transient_exceptions):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        return 500 <= exc.response.status_code < 600
+    if isinstance(exc, InferenceClientError) and exc.is_transient:
+        return True
+    return False
+
+
+class InferenceClientError(RuntimeError):
+    """Error from inference client."""
+    def __init__(self, *args, is_transient: bool = False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.is_transient = is_transient
+
+
+# ── Celery Tasks ─────────────────────────────────────────────────────────
 
 @celery_app.task(name=TASK_HEALTH_CHECK)
 def health_check_task() -> dict[str, str]:
@@ -42,7 +77,16 @@ def health_check_task() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@celery_app.task(bind=True, name=TASK_ANALYZE_IMAGE, max_retries=2)
+@celery_app.task(
+    bind=True,
+    name=TASK_ANALYZE_IMAGE,
+    max_retries=3,
+    default_retry_delay=5,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    retry_jitter=True,
+)
 def analyze_image_task(
     self,
     image_bytes_hex: str,
@@ -50,36 +94,69 @@ def analyze_image_task(
     content_type: str,
     user_context_json: str = "{}",
 ) -> dict[str, Any]:
-    """
-    Celery task: receives image bytes (hex-encoded), forwards to the external AI API.
-    Returns the parsed JSON response.
-    """
-    import json
-
-    from app.schemas.cv_schemas import UserAnalysisContext
-    from app.services.inference_client import analyze_image
-    from app.services.response_enricher import enrich_ai_response
-
+    """Celery task: forwards image bytes to external AI API and returns normalized result."""
+    job_id = self.request.id
     image_bytes = binascii.unhexlify(image_bytes_hex)
+
     try:
         ctx_data = json.loads(user_context_json) if user_context_json else {}
         user_context = UserAnalysisContext(**ctx_data) if ctx_data else None
-    except (json.JSONDecodeError, TypeError, ValueError):
+    except (json.JSONDecodeError, TypeError, ValueError) as e:
+        logger.warning("user_context_parse_failed", error=str(e), job_id=job_id)
         user_context = None
 
-    loop = asyncio.new_event_loop()
-    try:
-        result = loop.run_until_complete(
-            analyze_image(image_bytes, filename, content_type, user_context)
+    if not ai_circuit_breaker.can_execute():
+        logger.warning("circuit_breaker_rejected", job_id=job_id)
+        raise InferenceClientError(
+            "AI service temporarily unavailable (circuit breaker open)",
+            is_transient=True,
         )
-        result = loop.run_until_complete(enrich_ai_response(result, user_context))
-        return result
-    except Exception as exc:
-        logger.error("celery_task_failed", error=str(exc), task_id=self.request.id)
-        raise self.retry(exc=exc, countdown=2)
-    finally:
-        loop.close()
 
+    try:
+        result = asyncio.run(
+            _run_analyze_image(image_bytes, filename, content_type, user_context)
+        )
+        result = normalize_ai_response(result)
+        ai_circuit_breaker.record_success()
+        logger.info("analyze_image_success", job_id=job_id)
+        return result
+
+    except InferenceClientError as exc:
+        ai_circuit_breaker.record_failure()
+        if _is_transient_error(exc):
+            logger.warning("transient_error_retry", error=str(exc), retry_count=self.request.retries, job_id=job_id)
+            raise self.retry(exc=exc)
+        logger.error("non_transient_error", error=str(exc), job_id=job_id)
+        raise
+
+    except httpx.HTTPStatusError as exc:
+        ai_circuit_breaker.record_failure()
+        if _is_transient_error(exc):
+            logger.warning("http_error_retry", status_code=exc.response.status_code, job_id=job_id)
+            raise self.retry(exc=exc)
+        logger.error("http_error_non_transient", status_code=exc.response.status_code, job_id=job_id)
+        raise
+
+    except Exception as exc:
+        ai_circuit_breaker.record_failure()
+        if _is_transient_error(exc):
+            logger.warning("unknown_transient_error_retry", error=str(type(exc).__name__), job_id=job_id)
+            raise self.retry(exc=exc)
+        logger.error("unknown_non_transient_error", error=str(type(exc).__name__), job_id=job_id)
+        raise
+
+
+async def _run_analyze_image(
+    image_bytes: bytes,
+    filename: str,
+    content_type: str,
+    user_context: Optional[UserAnalysisContext],
+) -> dict[str, Any]:
+    """Run analyze_image in async context."""
+    return await analyze_image(image_bytes, filename, content_type, user_context)
+
+
+# ── Job Management ────────────────────────────────────────────────────────
 
 def enqueue_inference_job(
     image_bytes: bytes,
@@ -111,3 +188,8 @@ def get_job_result(job_id: str) -> Dict[str, Any]:
         error = str(res.result) if res.state == "RETRY" and res.result else None
         return {"status": "processing", "celery_state": res.state, "error": error}
     return {"status": "processing", "celery_state": res.state}
+
+
+def get_circuit_breaker_status() -> dict[str, Any]:
+    """Get current circuit breaker status for health check."""
+    return ai_circuit_breaker.get_status()

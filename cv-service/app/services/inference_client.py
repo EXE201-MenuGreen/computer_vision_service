@@ -16,12 +16,16 @@ import httpx
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.schemas.cv_schemas import UserAnalysisContext
+from app.services.response_utils import ai_circuit_breaker
 
 logger = get_logger(__name__)
 
 
 class InferenceClientError(RuntimeError):
-    pass
+    """Error from inference client."""
+    def __init__(self, *args, is_transient: bool = False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.is_transient = is_transient
 
 
 def _build_personalization_block(context: Optional[UserAnalysisContext]) -> str:
@@ -139,7 +143,15 @@ async def analyze_image_via_gemini(
 ) -> dict[str, Any]:
     """Send an image to Gemini and return structured JSON."""
     if not settings.gemini_api_key:
-        raise InferenceClientError("Gemini API key is not configured")
+        raise InferenceClientError("Gemini API key is not configured", is_transient=False)
+
+    # Check circuit breaker before making API call
+    if not ai_circuit_breaker.can_execute():
+        logger.warning("gemini_circuit_breaker_open")
+        raise InferenceClientError(
+            "AI service temporarily unavailable (circuit breaker open)",
+            is_transient=True,
+        )
 
     image_b64 = base64.b64encode(image_bytes).decode("utf-8")
     mime_type = content_type or "image/jpeg"
@@ -167,26 +179,55 @@ async def analyze_image_via_gemini(
     )
     timeout = httpx.Timeout(settings.ai_api_timeout_seconds)
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        resp = await client.post(url, json=payload)
-        try:
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            logger.warning("gemini_api_http_error", status_code=resp.status_code, body=resp.text[:500])
-            raise InferenceClientError(f"Gemini API request failed: {exc}") from exc
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(url, json=payload)
+            try:
+                resp.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                # HTTP 5xx are transient, 4xx are not
+                is_transient = 500 <= resp.status_code < 600
+                ai_circuit_breaker.record_failure()
+                logger.warning(
+                    "gemini_api_http_error",
+                    status_code=resp.status_code,
+                    is_transient=is_transient,
+                    body=resp.text[:500],
+                )
+                raise InferenceClientError(
+                    f"Gemini API request failed: {exc}",
+                    is_transient=is_transient,
+                ) from exc
 
-        data = resp.json()
-        try:
-            text_response = data["candidates"][0]["content"]["parts"][0]["text"]
-            result = json.loads(text_response)
-            if "job_id" not in result or not result["job_id"]:
-                result["job_id"] = str(uuid.uuid4())
-            if "request_id" not in result or not result["request_id"]:
-                result["request_id"] = str(uuid.uuid4())
-            return result
-        except (KeyError, IndexError, json.JSONDecodeError) as err:
-            logger.error("gemini_response_parse_failed", error=str(err), raw_response=resp.text[:1000])
-            raise InferenceClientError(f"Failed to parse Gemini response: {err}") from err
+            data = resp.json()
+            try:
+                text_response = data["candidates"][0]["content"]["parts"][0]["text"]
+                result = json.loads(text_response)
+                if "job_id" not in result or not result["job_id"]:
+                    result["job_id"] = str(uuid.uuid4())
+                if "request_id" not in result or not result["request_id"]:
+                    result["request_id"] = str(uuid.uuid4())
+
+                # Record success for circuit breaker
+                ai_circuit_breaker.record_success()
+                return result
+            except (KeyError, IndexError, json.JSONDecodeError) as err:
+                # Malformed response is not transient - AI returned bad JSON
+                logger.error(
+                    "gemini_response_parse_failed",
+                    error=str(err),
+                    raw_response=resp.text[:1000],
+                )
+                raise InferenceClientError(
+                    f"Failed to parse Gemini response: {err}",
+                    is_transient=False,
+                ) from err
+    except httpx.TimeoutException:
+        ai_circuit_breaker.record_failure()
+        raise InferenceClientError("Gemini API timeout", is_transient=True)
+    except httpx.ConnectError:
+        ai_circuit_breaker.record_failure()
+        raise InferenceClientError("Gemini API connection failed", is_transient=True)
 
 
 async def analyze_image(
@@ -201,7 +242,15 @@ async def analyze_image(
 
     if settings.ai_provider == "remote_api":
         if not settings.ai_api_base_url or not settings.ai_api_key:
-            raise InferenceClientError("AI inference API is not configured")
+            raise InferenceClientError("AI inference API is not configured", is_transient=False)
+
+        # Check circuit breaker before making API call
+        if not ai_circuit_breaker.can_execute():
+            logger.warning("remote_api_circuit_breaker_open")
+            raise InferenceClientError(
+                "AI service temporarily unavailable (circuit breaker open)",
+                is_transient=True,
+            )
 
         timeout = httpx.Timeout(settings.ai_api_timeout_seconds)
         headers = {"Authorization": f"Bearer {settings.ai_api_key}"}
@@ -210,19 +259,35 @@ async def analyze_image(
         if user_context is not None:
             data["user_context"] = user_context.model_dump_json()
 
-        async with httpx.AsyncClient(timeout=timeout, headers=headers) as client:
-            resp = await client.post(
-                f"{settings.ai_api_base_url.rstrip('/')}/analyze",
-                files=files,
-                data=data,
-            )
-            try:
-                resp.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                logger.warning("ai_inference_http_error", status_code=resp.status_code, body=resp.text[:500])
-                raise InferenceClientError(str(exc)) from exc
-            return resp.json()
+        try:
+            async with httpx.AsyncClient(timeout=timeout, headers=headers) as client:
+                resp = await client.post(
+                    f"{settings.ai_api_base_url.rstrip('/')}/analyze",
+                    files=files,
+                    data=data,
+                )
+                try:
+                    resp.raise_for_status()
+                    ai_circuit_breaker.record_success()
+                except httpx.HTTPStatusError as exc:
+                    is_transient = 500 <= resp.status_code < 600
+                    ai_circuit_breaker.record_failure()
+                    logger.warning(
+                        "ai_inference_http_error",
+                        status_code=resp.status_code,
+                        is_transient=is_transient,
+                        body=resp.text[:500],
+                    )
+                    raise InferenceClientError(str(exc), is_transient=is_transient) from exc
+                return resp.json()
+        except httpx.TimeoutException:
+            ai_circuit_breaker.record_failure()
+            raise InferenceClientError("Remote API timeout", is_transient=True)
+        except httpx.ConnectError:
+            ai_circuit_breaker.record_failure()
+            raise InferenceClientError("Remote API connection failed", is_transient=True)
 
     raise InferenceClientError(
-        f"Unsupported AI provider '{settings.ai_provider}'. Use 'gemini' or 'remote_api'."
+        f"Unsupported AI provider '{settings.ai_provider}'. Use 'gemini' or 'remote_api'.",
+        is_transient=False,
     )

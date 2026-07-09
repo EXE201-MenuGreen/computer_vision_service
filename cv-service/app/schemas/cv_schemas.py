@@ -73,7 +73,7 @@ class IngredientItem(BaseModel):
     ten_nguyen_lieu: str
     ten_nguyen_lieu_ky_thuat: str
     khoi_luong_uoc_tinh_g: float
-    do_chinh_xac_uoc_tinh: str
+    do_chinh_xac_uoc_tinh: str = "unknown"  # Default value ensures field is always present
 
 
 class RecipeIngredient(BaseModel):

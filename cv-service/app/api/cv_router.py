@@ -200,9 +200,7 @@ async def analyze_async(
     ),
     _: None = Depends(require_api_key),
 ):
-    """
-    Queue async image analysis. Optional form fields personalize Gemini suggestions.
-    """
+    """Queue async image analysis. Optional form fields personalize Gemini suggestions."""
     pil_image = await validate_and_load_image(image)
     image_bytes = _prepare_image_for_inference(pil_image)
 
@@ -257,6 +255,27 @@ async def get_job(job_id: str, _: None = Depends(require_api_key)):
         )
 
     payload = result["result"]
+    
+    # Validate and handle Pydantic validation errors gracefully
+    try:
+        validated_result = AIInferenceResponse(**payload)
+    except Exception as e:
+        logger.error(
+            "ai_response_validation_failed",
+            job_id=job_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return JobStatusResponse(
+            job_id=job_id,
+            status="failed",
+            celery_state=celery_state,
+            worker_active=worker_active,
+            message="AI response validation failed. The AI service returned incomplete data.",
+            steps=steps,
+            error=f"AI response validation failed: {type(e).__name__}. This indicates the AI model returned incomplete analysis data. Please retry with a clearer food image.",
+        )
+    
     return JobStatusResponse(
         job_id=job_id,
         status="done",
@@ -264,5 +283,5 @@ async def get_job(job_id: str, _: None = Depends(require_api_key)):
         worker_active=worker_active,
         message=message,
         steps=steps,
-        result=AIInferenceResponse(**payload),
+        result=validated_result,
     )
