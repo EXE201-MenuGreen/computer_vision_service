@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     allowed_mime_types: List[str] = ["image/jpeg", "image/png", "image/webp"]
     image_max_dimension_px: int = 1600
     image_jpeg_quality: int = 85
+    # Image-hash cache (Redis). 0 disables the cache.
+    image_cache_ttl_seconds: int = 3600
 
     # Nutrition API
     usda_api_key: str = ""

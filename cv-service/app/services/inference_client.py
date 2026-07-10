@@ -16,6 +16,7 @@ import httpx
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.schemas.cv_schemas import UserAnalysisContext
+from app.services.image_cache import get_cached_result, hash_image, set_cached_result
 from app.services.response_utils import ai_circuit_breaker
 
 logger = get_logger(__name__)
@@ -236,11 +237,22 @@ async def analyze_image(
     content_type: str,
     user_context: Optional[UserAnalysisContext] = None,
 ) -> dict[str, Any]:
-    """Main entrypoint: analyzes the image via Gemini or remote API."""
-    if settings.ai_provider == "gemini":
-        return await analyze_image_via_gemini(image_bytes, filename, content_type, user_context)
+    """Main entrypoint: analyzes the image via Gemini or remote API.
 
-    if settings.ai_provider == "remote_api":
+    Image-hash cache: identical bytes return the cached response without
+    contacting the AI provider. Disabled when image_cache_ttl_seconds=0.
+    """
+    if settings.image_cache_ttl_seconds > 0:
+        image_hash = hash_image(image_bytes)
+        cached = await get_cached_result(image_hash)
+        if cached is not None:
+            return cached
+
+    if settings.ai_provider == "gemini":
+        result = await analyze_image_via_gemini(
+            image_bytes, filename, content_type, user_context
+        )
+    elif settings.ai_provider == "remote_api":
         if not settings.ai_api_base_url or not settings.ai_api_key:
             raise InferenceClientError("AI inference API is not configured", is_transient=False)
 
@@ -279,15 +291,19 @@ async def analyze_image(
                         body=resp.text[:500],
                     )
                     raise InferenceClientError(str(exc), is_transient=is_transient) from exc
-                return resp.json()
+                result = resp.json()
         except httpx.TimeoutException:
             ai_circuit_breaker.record_failure()
             raise InferenceClientError("Remote API timeout", is_transient=True)
         except httpx.ConnectError:
             ai_circuit_breaker.record_failure()
             raise InferenceClientError("Remote API connection failed", is_transient=True)
+    else:
+        raise InferenceClientError(
+            f"Unsupported AI provider '{settings.ai_provider}'. Use 'gemini' or 'remote_api'.",
+            is_transient=False,
+        )
 
-    raise InferenceClientError(
-        f"Unsupported AI provider '{settings.ai_provider}'. Use 'gemini' or 'remote_api'.",
-        is_transient=False,
-    )
+    if settings.image_cache_ttl_seconds > 0:
+        await set_cached_result(image_hash, result)
+    return result

@@ -1,6 +1,6 @@
 import io
 import asyncio
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, UploadFile, File, Form, Depends
 
@@ -219,6 +219,134 @@ async def analyze_async(
     )
     logger.info("job_queued", job_id=job_id, user_id=user_id)
     return JobResponse(job_id=job_id)
+
+
+@router.post(
+    "/analyze-sync",
+    response_model=JobStatusResponse,
+    summary="Synchronous food image analysis",
+    description=(
+        "Uploads a food image and waits for the worker to finish inference. "
+        "Returns the same JobStatusResponse as /api/v1/cv/jobs/{job_id}; "
+        "the result is also persisted in Celery's backend, so a follow-up "
+        "GET /api/v1/cv/jobs/{job_id} returns it immediately."
+    ),
+)
+async def analyze_sync(
+    image: UploadFile = File(...),
+    user_id: Optional[str] = Form(None, description="User UUID for personalization"),
+    dietary_preferences: Optional[str] = Form(
+        None,
+        description='JSON array, e.g. ["high_protein","low_carb"]',
+    ),
+    avoid_foods: Optional[str] = Form(
+        None,
+        description='JSON array of foods to avoid, e.g. ["đồ chiên"]',
+    ),
+    recent_dishes: Optional[str] = Form(
+        None,
+        description='JSON array of recent dish/ingredient names; auto-loaded from DB if user_id set',
+    ),
+    timeout_seconds: Optional[float] = Form(
+        90.0,
+        description="Max seconds to wait for worker. Defaults to 90s.",
+    ),
+    _: None = Depends(require_api_key),
+):
+    """Run inference in the same request and return the final JobStatusResponse."""
+    pil_image = await validate_and_load_image(image)
+    image_bytes = _prepare_image_for_inference(pil_image)
+
+    user_context = await build_user_analysis_context(
+        user_id=user_id,
+        dietary_preferences=dietary_preferences,
+        avoid_foods=avoid_foods,
+        recent_dishes=recent_dishes,
+    )
+
+    job_id = enqueue_inference_job(
+        image_bytes,
+        image.filename or "image.jpg",
+        "image/jpeg",
+        user_context_json=user_context.model_dump_json(),
+    )
+    logger.info("job_queued_sync", job_id=job_id, user_id=user_id, timeout=timeout_seconds)
+
+    # Block until worker finishes (or timeout) so the response is final.
+    # `get_job_result` reads from Celery's backend, so subsequent GET /jobs/{id}
+    # calls will see the persisted result immediately.
+    wait_timeout = timeout_seconds if timeout_seconds and timeout_seconds > 0 else 90.0
+    deadline = asyncio.get_event_loop().time() + wait_timeout
+    poll_interval = 0.5
+    result: Dict[str, Any] = {"status": "processing", "celery_state": "STARTED"}
+
+    while True:
+        result = get_job_result(job_id)
+        if result.get("status") in {"done", "failed"}:
+            break
+        if asyncio.get_event_loop().time() >= deadline:
+            result = {
+                "status": "processing",
+                "celery_state": result.get("celery_state"),
+                "error": f"Timed out after {wait_timeout}s; client should keep polling.",
+            }
+            break
+        await asyncio.sleep(poll_interval)
+
+    status = result["status"]
+    celery_state = result.get("celery_state")
+    worker_active, message, steps = _job_progress(status, celery_state)
+
+    if status in {"queued", "processing"}:
+        return JobStatusResponse(
+            job_id=job_id,
+            status=status,
+            celery_state=celery_state,
+            worker_active=worker_active,
+            message=message,
+            steps=steps,
+            error=result.get("error"),
+        )
+    if status == "failed":
+        return JobStatusResponse(
+            job_id=job_id,
+            status="failed",
+            celery_state=celery_state,
+            worker_active=worker_active,
+            message=message,
+            steps=steps,
+            error=result.get("error"),
+        )
+
+    payload = result["result"]
+    try:
+        validated_result = AIInferenceResponse(**payload)
+    except Exception as e:
+        logger.error(
+            "ai_response_validation_failed",
+            job_id=job_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return JobStatusResponse(
+            job_id=job_id,
+            status="failed",
+            celery_state=celery_state,
+            worker_active=worker_active,
+            message="AI response validation failed. The AI service returned incomplete data.",
+            steps=steps,
+            error=f"AI response validation failed: {type(e).__name__}. Please retry with a clearer food image.",
+        )
+
+    return JobStatusResponse(
+        job_id=job_id,
+        status="done",
+        celery_state=celery_state,
+        worker_active=worker_active,
+        message=message,
+        steps=steps,
+        result=validated_result,
+    )
 
 
 @router.get(
