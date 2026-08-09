@@ -17,11 +17,13 @@ import httpx
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.schemas.cv_schemas import UserAnalysisContext
-from app.services.inference_client import analyze_image
+from app.services.inference_client import InferenceClientError, analyze_image
+from app.services.prepared_meal_service import analyze_prepared_meal
 from app.services.response_utils import normalize_ai_response, ai_circuit_breaker
 
 logger = get_logger(__name__)
 TASK_ANALYZE_IMAGE = "cv.analyze_image"
+TASK_ANALYZE_PREPARED_MEAL = "cv.analyze_prepared_meal"
 TASK_HEALTH_CHECK = "cv.health_check"
 
 celery_app = Celery(
@@ -60,13 +62,6 @@ def _is_transient_error(exc: Exception) -> bool:
     if isinstance(exc, InferenceClientError) and exc.is_transient:
         return True
     return False
-
-
-class InferenceClientError(RuntimeError):
-    """Error from inference client."""
-    def __init__(self, *args, is_transient: bool = False, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.is_transient = is_transient
 
 
 # ── Celery Tasks ─────────────────────────────────────────────────────────
@@ -146,6 +141,50 @@ def analyze_image_task(
         raise
 
 
+@celery_app.task(bind=True, name=TASK_ANALYZE_PREPARED_MEAL, max_retries=3)
+def analyze_prepared_meal_task(
+    self,
+    image_bytes_hex: str,
+    filename: str,
+    content_type: str,
+) -> dict[str, Any]:
+    """Analyze one prepared meal without invoking the ingredient-scan normalizer."""
+    job_id = self.request.id
+    image_bytes = binascii.unhexlify(image_bytes_hex)
+    try:
+        if not ai_circuit_breaker.can_execute():
+            logger.warning(
+                "prepared_meal_circuit_breaker_rejected",
+                job_id=job_id,
+                analysis_type="prepared_meal",
+            )
+            raise InferenceClientError(
+                "AI service temporarily unavailable (circuit breaker open)",
+                is_transient=True,
+            )
+        result = asyncio.run(analyze_prepared_meal(image_bytes, filename, content_type))
+        result["job_id"] = job_id
+        ai_circuit_breaker.record_success()
+        logger.info("analyze_prepared_meal_success", job_id=job_id, analysis_type="prepared_meal")
+        return result
+    except Exception as exc:
+        ai_circuit_breaker.record_failure()
+        if _is_transient_error(exc):
+            logger.warning(
+                "prepared_meal_transient_error_retry",
+                error=type(exc).__name__,
+                job_id=job_id,
+                analysis_type="prepared_meal",
+            )
+            raise self.retry(exc=exc, countdown=min(5 * (2 ** self.request.retries), 60))
+        logger.error(
+            "prepared_meal_non_transient_error",
+            error=type(exc).__name__,
+            job_id=job_id,
+            analysis_type="prepared_meal",
+        )
+        raise
+
 async def _run_analyze_image(
     image_bytes: bytes,
     filename: str,
@@ -169,6 +208,16 @@ def enqueue_inference_job(
     task = celery_app.send_task(
         TASK_ANALYZE_IMAGE,
         args=[image_bytes_hex, filename, content_type, user_context_json],
+        queue=settings.celery_queue,
+    )
+    return task.id
+
+
+def enqueue_prepared_meal_job(image_bytes: bytes, filename: str, content_type: str) -> str:
+    """Create a background prepared-meal analysis job and return its id."""
+    task = celery_app.send_task(
+        TASK_ANALYZE_PREPARED_MEAL,
+        args=[binascii.hexlify(image_bytes).decode("utf-8"), filename, content_type],
         queue=settings.celery_queue,
     )
     return task.id

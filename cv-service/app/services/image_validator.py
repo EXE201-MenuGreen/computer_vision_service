@@ -7,6 +7,23 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 
+def prepare_image_for_inference(image: Image.Image) -> bytes:
+    """Resize an RGB image and encode it using the service-wide JPEG settings."""
+    max_dimension = settings.image_max_dimension_px
+    if max_dimension > 0 and max(image.size) > max_dimension:
+        image = image.copy()
+        image.thumbnail((max_dimension, max_dimension))
+
+    buffer = io.BytesIO()
+    image.save(
+        buffer,
+        format="JPEG",
+        quality=settings.image_jpeg_quality,
+        optimize=True,
+    )
+    return buffer.getvalue()
+
+
 async def validate_and_load_image(file: UploadFile) -> Image.Image:
     """
     Validate MIME type, file size, and load into PIL Image.

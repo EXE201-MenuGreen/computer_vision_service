@@ -4,7 +4,9 @@ Python FastAPI · Google Gemini API · Celery · Redis · Docker
 
 ## Overview
 
-This service receives an image, forwards it to an external AI API (like Google Gemini) using Celery async task worker with Redis, and returns structured Vietnamese recipe and nutrition data.
+This service supports two isolated image-analysis use cases: scanning raw ingredients
+to suggest recipes, and scanning one already-prepared meal to infer its components
+and estimate nutrition. Celery and Redis provide async execution and polling.
 
 ---
 
@@ -149,8 +151,54 @@ All routes are versioned under `/api/v1`. Authenticated endpoints require `Autho
 | **GET**    | `/api/v1/cv/health`                 | Health check + model status                       |
 | **GET**    | `/api/v1/cv/health/deep`            | Protected manual dependency health check          |
 | **POST**   | `/api/v1/cv/analyze`                | Queue async image analysis job (returns `job_id`) |
+| **POST**   | `/api/v1/cv/analyze-sync`           | Wait for an ingredient-scan result                |
 | **GET**    | `/api/v1/cv/jobs/{job_id}`          | Poll async job status and retrieve result         |
+| **POST**   | `/api/v1/cv/analyze-meal`           | Queue analysis of an already-prepared meal        |
+| **POST**   | `/api/v1/cv/analyze-meal-sync`      | Wait for a prepared-meal result                    |
+| **GET**    | `/api/v1/cv/meal-jobs/{job_id}`     | Poll a prepared-meal job                           |
 | **GET**    | `/metrics`                          | Prometheus metrics                                |
+
+### Prepared-meal scan
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/cv/analyze-meal" \
+  -H "Authorization: Bearer $API_SECRET_KEY" \
+  -F "image=@prepared-meal.jpg"
+```
+
+The initial response contains a `job_id`. Poll `/api/v1/cv/meal-jobs/{job_id}`.
+A completed response contains `dish_name`, inferred `ingredients`, nutrition per
+ingredient, `estimated_total_grams`, and `total_macros`. The model identifies the
+dish, ingredients, estimated grams, and visual confidence; final calories and
+macros are always rebuilt through `NutritionService` (Redis/USDA/fallback).
+
+```json
+{
+  "status": "done",
+  "result": {
+    "analysis_type": "prepared_meal",
+    "dish_name": "Cơm gà",
+    "estimated_total_grams": 420,
+    "ingredients": [
+      {
+        "name": "Ức gà",
+        "estimated_grams": 180,
+        "detection_confidence": 0.82,
+        "nutrition": {
+          "macros": {"calories_kcal": 297, "protein_g": 55.8, "carbs_g": 0, "fat_g": 6.5, "fiber_g": 0},
+          "data_source": "usda",
+          "confidence": 0.75
+        }
+      }
+    ],
+    "total_macros": {"calories_kcal": 609, "protein_g": 61.8, "carbs_g": 68, "fat_g": 8, "fiber_g": 1.2}
+  }
+}
+```
+
+Nutrition and portion sizes are estimates, especially for hidden oil, sauce,
+sugar, butter, and photos without a size reference. Use `detection_confidence`,
+nutrition `confidence`, and `data_source` when presenting the result.
 
 ---
 
