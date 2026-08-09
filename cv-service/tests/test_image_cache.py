@@ -107,6 +107,42 @@ async def test_set_cached_serializes_and_uses_ttl():
     assert json.loads(stored_value["value"]) == payload
 
 
+@pytest.mark.asyncio
+async def test_cache_namespace_isolates_prepared_meal_from_legacy_key():
+    fake = _FakeRedis(get_return=None)
+    with patch.object(image_cache, "_client", fake), patch.object(
+        image_cache.settings, "image_cache_ttl_seconds", 60
+    ):
+        await image_cache.set_cached_result("same-hash", {"legacy": True})
+        await image_cache.set_cached_result(
+            "same-hash", {"meal": True}, namespace="prepared_meal"
+        )
+    assert fake.set_calls[0][0] == "image_result:same-hash"
+    assert fake.set_calls[1][0] == "image_result:prepared_meal:same-hash"
+
+
+@pytest.mark.asyncio
+async def test_cache_namespace_reads_only_its_own_payload():
+    class KeyedRedis:
+        values = {
+            "image_result:same-hash": b'{"flow":"ingredient"}',
+            "image_result:prepared_meal:same-hash": b'{"flow":"meal"}',
+        }
+
+        async def get(self, key):
+            return self.values.get(key)
+
+    with patch.object(image_cache, "_client", KeyedRedis()), patch.object(
+        image_cache.settings, "image_cache_ttl_seconds", 60
+    ):
+        legacy = await image_cache.get_cached_result("same-hash")
+        prepared = await image_cache.get_cached_result(
+            "same-hash", namespace="prepared_meal"
+        )
+    assert legacy == {"flow": "ingredient"}
+    assert prepared == {"flow": "meal"}
+
+
 # --------------------------------------------------------------------------- #
 # Failure modes: Redis errors must not propagate
 # --------------------------------------------------------------------------- #

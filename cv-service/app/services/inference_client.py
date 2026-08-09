@@ -136,11 +136,11 @@ Chỉ trả về duy nhất chuỗi JSON hợp lệ. Không dùng markdown (```j
 """
 
 
-async def analyze_image_via_gemini(
+async def _analyze_image_via_gemini_prompt(
     image_bytes: bytes,
     filename: str,
     content_type: str,
-    user_context: Optional[UserAnalysisContext] = None,
+    prompt: str,
 ) -> dict[str, Any]:
     """Send an image to Gemini and return structured JSON."""
     if not settings.gemini_api_key:
@@ -156,8 +156,6 @@ async def analyze_image_via_gemini(
 
     image_b64 = base64.b64encode(image_bytes).decode("utf-8")
     mime_type = content_type or "image/jpeg"
-    prompt = _build_gemini_prompt(user_context)
-
     payload = {
         "contents": [
             {
@@ -193,10 +191,9 @@ async def analyze_image_via_gemini(
                     "gemini_api_http_error",
                     status_code=resp.status_code,
                     is_transient=is_transient,
-                    body=resp.text[:500],
                 )
                 raise InferenceClientError(
-                    f"Gemini API request failed: {exc}",
+                    f"Gemini API request failed with HTTP {resp.status_code}",
                     is_transient=is_transient,
                 ) from exc
 
@@ -216,8 +213,7 @@ async def analyze_image_via_gemini(
                 # Malformed response is not transient - AI returned bad JSON
                 logger.error(
                     "gemini_response_parse_failed",
-                    error=str(err),
-                    raw_response=resp.text[:1000],
+                    error_type=type(err).__name__,
                 )
                 raise InferenceClientError(
                     f"Failed to parse Gemini response: {err}",
@@ -229,6 +225,50 @@ async def analyze_image_via_gemini(
     except httpx.ConnectError:
         ai_circuit_breaker.record_failure()
         raise InferenceClientError("Gemini API connection failed", is_transient=True)
+
+
+async def analyze_image_via_gemini(
+    image_bytes: bytes,
+    filename: str,
+    content_type: str,
+    user_context: Optional[UserAnalysisContext] = None,
+) -> dict[str, Any]:
+    """Backward-compatible Gemini entrypoint for ingredient scanning."""
+    return await _analyze_image_via_gemini_prompt(
+        image_bytes,
+        filename,
+        content_type,
+        _build_gemini_prompt(user_context),
+    )
+
+
+async def analyze_prepared_meal_image(
+    image_bytes: bytes,
+    filename: str,
+    content_type: str,
+    prompt: str,
+) -> dict[str, Any]:
+    """Analyze an existing prepared meal using an isolated prompt/cache contract."""
+    image_hash = hash_image(image_bytes)
+    namespace = "prepared_meal"
+    if settings.image_cache_ttl_seconds > 0:
+        cached = await get_cached_result(image_hash, namespace=namespace)
+        if cached is not None:
+            return cached
+
+    if settings.ai_provider != "gemini":
+        raise InferenceClientError(
+            "Prepared-meal analysis is currently supported only by the Gemini provider; "
+            "the configured remote API has no declared prepared-meal capability.",
+            is_transient=False,
+        )
+
+    result = await _analyze_image_via_gemini_prompt(
+        image_bytes, filename, content_type, prompt
+    )
+    if settings.image_cache_ttl_seconds > 0:
+        await set_cached_result(image_hash, result, namespace=namespace)
+    return result
 
 
 async def analyze_image(
@@ -288,7 +328,6 @@ async def analyze_image(
                         "ai_inference_http_error",
                         status_code=resp.status_code,
                         is_transient=is_transient,
-                        body=resp.text[:500],
                     )
                     raise InferenceClientError(str(exc), is_transient=is_transient) from exc
                 result = resp.json()

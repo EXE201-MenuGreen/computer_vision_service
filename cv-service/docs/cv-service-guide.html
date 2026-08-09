@@ -188,6 +188,16 @@
       </section>
 
       <section>
+        <div class="callout warning">
+          <strong>Luồng món ăn đã hoàn chỉnh:</strong>
+          dùng <code>POST /api/v1/cv/analyze-meal</code> (hoặc
+          <code>/analyze-meal-sync</code>) và poll
+          <code>GET /api/v1/cv/meal-jobs/{job_id}</code>. Kết quả trả tên món,
+          nguyên liệu suy luận, gram, calories/macros từng nguyên liệu và tổng.
+          Dinh dưỡng được tính qua NutritionService; số liệu vẫn chỉ là ước tính,
+          đặc biệt với dầu, sốt, đường và ảnh không có vật tham chiếu khẩu phần.
+        </div>
+
         <h2>Chi tiết API Endpoints</h2>
         
         <h3>1. POST /api/v1/cv/analyze <span class="badge badge-async">Tạo Job (Async)</span></h3>

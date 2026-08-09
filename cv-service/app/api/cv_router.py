@@ -1,4 +1,3 @@
-import io
 import asyncio
 from typing import Any, Dict, Optional
 
@@ -13,7 +12,7 @@ from app.schemas.cv_schemas import (
     JobResponse,
     JobStatusResponse,
 )
-from app.services.image_validator import validate_and_load_image
+from app.services.image_validator import prepare_image_for_inference, validate_and_load_image
 from app.services.worker import TASK_HEALTH_CHECK, celery_app, enqueue_inference_job, get_job_result
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -53,23 +52,6 @@ def _ping_celery_workers() -> bool:
                 task.forget()
             except Exception:
                 pass
-
-
-def _prepare_image_for_inference(pil_image) -> bytes:
-    """Resize large uploads and encode them as JPEG before sending to the worker."""
-    max_dimension = settings.image_max_dimension_px
-    if max_dimension > 0 and max(pil_image.size) > max_dimension:
-        pil_image = pil_image.copy()
-        pil_image.thumbnail((max_dimension, max_dimension))
-
-    buf = io.BytesIO()
-    pil_image.save(
-        buf,
-        format="JPEG",
-        quality=settings.image_jpeg_quality,
-        optimize=True,
-    )
-    return buf.getvalue()
 
 
 def _job_progress(status: str, celery_state: str | None) -> tuple[bool, str, list[JobProgressStep]]:
@@ -202,7 +184,7 @@ async def analyze_async(
 ):
     """Queue async image analysis. Optional form fields personalize Gemini suggestions."""
     pil_image = await validate_and_load_image(image)
-    image_bytes = _prepare_image_for_inference(pil_image)
+    image_bytes = prepare_image_for_inference(pil_image)
 
     user_context = await build_user_analysis_context(
         user_id=user_id,
@@ -255,7 +237,7 @@ async def analyze_sync(
 ):
     """Run inference in the same request and return the final JobStatusResponse."""
     pil_image = await validate_and_load_image(image)
-    image_bytes = _prepare_image_for_inference(pil_image)
+    image_bytes = prepare_image_for_inference(pil_image)
 
     user_context = await build_user_analysis_context(
         user_id=user_id,

@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.api.cv_router import router as cv_router
+from app.api.meal_scan_router import router as meal_scan_router
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
 
@@ -24,6 +25,10 @@ Primary flow:
 2. Receive a `job_id`.
 3. Poll `/api/v1/cv/jobs/{job_id}` until `status` is `done` or `failed`.
 
+Prepared-meal flow uses `/api/v1/cv/analyze-meal` and polls
+`/api/v1/cv/meal-jobs/{job_id}`. Its ingredient calories and totals are computed
+by NutritionService rather than accepted from the vision model.
+
 Authentication:
 - Protected service endpoints require `Authorization: Bearer <API_SECRET_KEY>`.
 - Set `AUTH_ENABLED=false` only for local API testing.
@@ -33,6 +38,10 @@ TAGS_METADATA = [
     {
         "name": "Computer Vision",
         "description": "Food image analysis, async job polling, and service health checks.",
+    },
+    {
+        "name": "Prepared Meal Scan",
+        "description": "Analyze an already-prepared meal, infer ingredients, and estimate nutrition.",
     },
 ]
 
@@ -78,6 +87,7 @@ app.add_middleware(
 Instrumentator().instrument(app).expose(app)
 
 app.include_router(cv_router, prefix=API_PREFIX)
+app.include_router(meal_scan_router, prefix=API_PREFIX)
 
 
 @app.exception_handler(Exception)

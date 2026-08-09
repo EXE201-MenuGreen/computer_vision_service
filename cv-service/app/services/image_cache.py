@@ -45,11 +45,12 @@ def hash_image(image_bytes: bytes) -> str:
     return hashlib.sha256(image_bytes).hexdigest()
 
 
-def _key(image_hash: str) -> str:
-    return f"{_KEY_PREFIX}{image_hash}"
+def _key(image_hash: str, namespace: str | None = None) -> str:
+    # No namespace intentionally preserves the deployed ingredient-scan key.
+    return f"{_KEY_PREFIX}{namespace}:{image_hash}" if namespace else f"{_KEY_PREFIX}{image_hash}"
 
 
-async def get_cached_result(image_hash: str) -> Optional[dict[str, Any]]:
+async def get_cached_result(image_hash: str, namespace: str | None = None) -> Optional[dict[str, Any]]:
     """Return cached result dict or None on miss / any error."""
     if settings.image_cache_ttl_seconds <= 0:
         return None
@@ -57,18 +58,18 @@ async def get_cached_result(image_hash: str) -> Optional[dict[str, Any]]:
     if client is None:
         return None
     try:
-        raw = await client.get(_key(image_hash))
+        raw = await client.get(_key(image_hash, namespace))
         if raw is None:
-            logger.debug("image_cache_miss", image_hash_prefix=image_hash[:8])
+            logger.debug("image_cache_miss", image_hash_prefix=image_hash[:8], namespace=namespace or "ingredient_scan")
             return None
-        logger.info("image_cache_hit", image_hash_prefix=image_hash[:8])
+        logger.info("image_cache_hit", image_hash_prefix=image_hash[:8], namespace=namespace or "ingredient_scan")
         return json.loads(raw)
     except Exception as exc:
         logger.warning("image_cache_get_failed", error=str(exc))
         return None
 
 
-async def set_cached_result(image_hash: str, result: dict[str, Any]) -> None:
+async def set_cached_result(image_hash: str, result: dict[str, Any], namespace: str | None = None) -> None:
     """Store result for an image hash. Errors are swallowed."""
     if settings.image_cache_ttl_seconds <= 0:
         return
@@ -78,10 +79,10 @@ async def set_cached_result(image_hash: str, result: dict[str, Any]) -> None:
     ttl = settings.image_cache_ttl_seconds
     try:
         await client.set(
-            _key(image_hash),
+            _key(image_hash, namespace),
             json.dumps(result, ensure_ascii=False),
             ex=ttl,
         )
-        logger.debug("image_cache_set", image_hash_prefix=image_hash[:8], ttl=ttl)
+        logger.debug("image_cache_set", image_hash_prefix=image_hash[:8], ttl=ttl, namespace=namespace or "ingredient_scan")
     except Exception as exc:
         logger.warning("image_cache_set_failed", error=str(exc))
